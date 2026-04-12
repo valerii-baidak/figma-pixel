@@ -138,8 +138,10 @@ const globalBackstop = spawnSync('which', ['backstop'], {
   shell: false,
 });
 const globalBackstopPath = globalBackstop.status === 0 ? globalBackstop.stdout.trim() : '';
+const localBackstopPath = path.resolve(__dirname, '../node_modules/.bin/backstop');
 
 const candidateBins = [
+  localBackstopPath,
   path.resolve(process.cwd(), 'node_modules/.bin/backstop'),
   globalBackstopPath,
 ].filter(Boolean);
