@@ -70,6 +70,10 @@ Token discipline for this skill:
 - Use real Figma-derived screenshots, exports, or crops when the design already contains the real visuals.
 - Placeholder images are not acceptable when the Figma design contains real visuals.
 - Use real Figma-derived assets only: export, screenshot, or crop.
+- Stop using placeholder images.
+- The skill explicitly requires real Figma-derived visuals when they exist in the design.
+- Extract the real images through the Figma API or export path, or report a blocker.
+- Do not fake the result with placeholders.
 - If the required visual cannot be extracted from Figma, stop and report the blocker clearly.
 - Prefer the most stable serving path and avoid unnecessary build-tool churn.
 - If one comparison tool fails but another still works, continue with the best available diff method.
