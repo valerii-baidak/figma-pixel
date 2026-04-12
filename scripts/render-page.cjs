@@ -6,7 +6,11 @@ const { spawnSync } = require('child_process');
 
 function ensureSetup() {
   const localPlaywright = path.resolve(__dirname, '../node_modules/playwright');
-  if (fs.existsSync(localPlaywright)) return;
+  const localPlaywrightCore = path.resolve(__dirname, '../node_modules/playwright-core');
+  const chromiumPath = process.env.CHROMIUM_PATH;
+  const hasBrowser = chromiumPath ? fs.existsSync(chromiumPath) : true;
+
+  if ((fs.existsSync(localPlaywright) || fs.existsSync(localPlaywrightCore)) && hasBrowser) return;
 
   const setupScript = path.resolve(__dirname, 'setup.cjs');
   const result = spawnSync(process.execPath, [setupScript], {
@@ -25,7 +29,7 @@ ensureSetup();
 
 function loadPlaywright() {
   const moduleOverride = process.env.PLAYWRIGHT_MODULE_PATH;
-  const candidates = moduleOverride ? [moduleOverride, 'playwright'] : ['playwright'];
+  const candidates = moduleOverride ? [moduleOverride, 'playwright', 'playwright-core'] : ['playwright', 'playwright-core'];
 
   for (const candidate of candidates) {
     try {

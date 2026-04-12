@@ -8,7 +8,11 @@ const { spawnSync } = require('child_process');
 function ensureSetup() {
   const localBackstop = path.resolve(__dirname, '../node_modules/.bin/backstop');
   const localPlaywright = path.resolve(__dirname, '../node_modules/playwright');
-  if (fs.existsSync(localBackstop) && fs.existsSync(localPlaywright)) return;
+  const localPlaywrightCore = path.resolve(__dirname, '../node_modules/playwright-core');
+  const chromiumPath = process.env.CHROMIUM_PATH;
+  const hasBrowser = chromiumPath ? fs.existsSync(chromiumPath) : true;
+
+  if (fs.existsSync(localBackstop) && (fs.existsSync(localPlaywright) || fs.existsSync(localPlaywrightCore)) && hasBrowser) return;
 
   const setupScript = path.resolve(__dirname, 'setup.cjs');
   const result = spawnSync(process.execPath, [setupScript], {
