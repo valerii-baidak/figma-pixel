@@ -67,7 +67,6 @@ Token discipline for this skill:
 - Do not create scratch folders or runtime-only assets inside the implementation project.
 - Derive viewport size from the Figma frame or node bounds.
 - Use real Figma-derived screenshots, exports, or crops when the design already contains the real visuals.
-- - Use real Figma-derived screenshots, exports, or crops when the design already contains the real visuals.
 - Placeholder images are not acceptable when the Figma design contains real visuals.
 - Use real Figma-derived assets only: export, screenshot, or crop.
 - If the required visual cannot be extracted from Figma, stop and report the blocker clearly.

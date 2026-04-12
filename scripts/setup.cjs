@@ -22,37 +22,66 @@ const packageJson = {
 
 fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2));
 
-const command = 'npm install';
-const result = spawnSync('npm', ['install'], {
-  cwd: skillDir,
-  stdio: 'pipe',
-  encoding: 'utf8',
-  shell: false,
-});
+const steps = [];
+
+function runStep(command, args) {
+  const result = spawnSync(command, args, {
+    cwd: skillDir,
+    stdio: 'pipe',
+    encoding: 'utf8',
+    shell: false,
+  });
+
+  steps.push({
+    command: [command, ...args].join(' '),
+    exitCode: result.status,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  });
+
+  return result;
+}
+
+const npmInstall = runStep('npm', ['install']);
+if (npmInstall.status !== 0) {
+  const report = {
+    ok: false,
+    cwd: skillDir,
+    dependencies: Object.keys(packageJson.dependencies),
+    steps,
+  };
+  fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
+  console.error('figma-pixel setup failed');
+  console.error('command: npm install');
+  console.error(`report: ${reportPath}`);
+  console.error(npmInstall.stderr || npmInstall.stdout || 'Unknown setup error');
+  process.exit(npmInstall.status || 1);
+}
+
+const playwrightInstall = runStep('npx', ['playwright', 'install', 'chromium']);
 
 const report = {
-  ok: result.status === 0,
-  command,
+  ok: playwrightInstall.status === 0,
   cwd: skillDir,
-  exitCode: result.status,
-  stdout: result.stdout,
-  stderr: result.stderr,
   dependencies: Object.keys(packageJson.dependencies),
+  browsers: ['chromium'],
+  steps,
 };
 
 fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
 
-if (result.status !== 0) {
+if (playwrightInstall.status !== 0) {
   console.error('figma-pixel setup failed');
-  console.error(`command: ${command}`);
+  console.error('command: npx playwright install chromium');
   console.error(`report: ${reportPath}`);
-  console.error(result.stderr || result.stdout || 'Unknown setup error');
-  process.exit(result.status || 1);
+  console.error(playwrightInstall.stderr || playwrightInstall.stdout || 'Unknown browser setup error');
+  process.exit(playwrightInstall.status || 1);
 }
 
 console.log(JSON.stringify({
   ok: true,
   report: reportPath,
-  installed: Object.keys(packageJson.dependencies)
+  installed: Object.keys(packageJson.dependencies),
+  browsers: ['chromium']
 }, null, 2));
 process.exit(0);
