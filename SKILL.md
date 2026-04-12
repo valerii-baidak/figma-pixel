@@ -65,6 +65,7 @@ Token discipline for this skill:
 - Store outputs under `figma-pixel-runs/<project-slug>/<run-id>/`.
 - Reuse shared Figma artifacts under `figma-pixel-runs/<project-slug>/shared/figma/`.
 - Do not create scratch folders or runtime-only assets inside the implementation project.
+- Do not create `.figma-fetch`, `.figma-source`, or similar runtime folders inside the implementation project.
 - Derive viewport size from the Figma frame or node bounds.
 - Use real Figma-derived screenshots, exports, or crops when the design already contains the real visuals.
 - Placeholder images are not acceptable when the Figma design contains real visuals.
