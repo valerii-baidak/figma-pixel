@@ -23,6 +23,7 @@ const packageJson = {
 fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2));
 
 const steps = [];
+const playwrightBin = path.join(skillDir, 'node_modules', '.bin', process.platform === 'win32' ? 'playwright.cmd' : 'playwright');
 
 function runStep(command, args) {
   const result = spawnSync(command, args, {
@@ -58,24 +59,39 @@ if (npmInstall.status !== 0) {
   process.exit(npmInstall.status || 1);
 }
 
-const playwrightInstall = runStep('npx', ['playwright', 'install', 'chromium']);
+const playwrightInstall = runStep(playwrightBin, ['install', 'chromium']);
+let playwrightDeps = null;
+
+if (process.platform === 'linux') {
+  playwrightDeps = runStep(playwrightBin, ['install-deps', 'chromium']);
+}
+
+const ok = playwrightInstall.status === 0 && (!playwrightDeps || playwrightDeps.status === 0);
 
 const report = {
-  ok: playwrightInstall.status === 0,
+  ok,
   cwd: skillDir,
   dependencies: Object.keys(packageJson.dependencies),
   browsers: ['chromium'],
+  os: process.platform,
   steps,
 };
 
 fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
 
-if (playwrightInstall.status !== 0) {
+if (!ok) {
+  const failedCommand = playwrightDeps && playwrightDeps.status !== 0
+    ? `${playwrightBin} install-deps chromium`
+    : `${playwrightBin} install chromium`;
+  const failedResult = playwrightDeps && playwrightDeps.status !== 0
+    ? playwrightDeps
+    : playwrightInstall;
+
   console.error('figma-pixel setup failed');
-  console.error('command: npx playwright install chromium');
+  console.error(`command: ${failedCommand}`);
   console.error(`report: ${reportPath}`);
-  console.error(playwrightInstall.stderr || playwrightInstall.stdout || 'Unknown browser setup error');
-  process.exit(playwrightInstall.status || 1);
+  console.error(failedResult.stderr || failedResult.stdout || 'Unknown browser setup error');
+  process.exit(failedResult.status || 1);
 }
 
 console.log(JSON.stringify({
