@@ -1,0 +1,107 @@
+#!/usr/bin/env node
+
+const fs = require('fs');
+const path = require('path');
+
+function readJsonSafe(filePath) {
+  if (!filePath || !fs.existsSync(filePath)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+const args = process.argv.slice(2);
+const options = {};
+for (let i = 0; i < args.length; i += 1) {
+  const key = args[i];
+  if (!key.startsWith('--')) continue;
+  const value = args[i + 1];
+  options[key.slice(2)] = value;
+  i += 1;
+}
+
+const outputDir = path.resolve(options.output || 'figma-pixel-runs/project/run-id/final');
+const figma = options.figma || '';
+const page = options.page || '';
+const viewport = options.viewport || '';
+const referenceImage = options.reference || '';
+const screenshot = options.screenshot || '';
+const diffImage = options.diff || '';
+const backstopSummaryPath = options.backstopSummary || '';
+const pixelmatchReportPath = options.pixelmatchReport || '';
+const topMismatchesRaw = options.top || '';
+
+fs.mkdirSync(outputDir, { recursive: true });
+
+const backstopSummary = readJsonSafe(backstopSummaryPath);
+const pixelmatchReport = readJsonSafe(pixelmatchReportPath);
+
+const mismatch = pixelmatchReport?.diffPercent ?? null;
+const match = mismatch == null ? null : +(100 - Number(mismatch)).toFixed(2);
+const status = mismatch == null
+  ? 'blocked'
+  : mismatch <= 5
+    ? 'pass'
+    : mismatch <= 20
+      ? 'needs review'
+      : 'needs work';
+
+const topMismatches = topMismatchesRaw
+  ? topMismatchesRaw.split('|').map((s) => s.trim()).filter(Boolean)
+  : [];
+
+const report = {
+  figma,
+  page,
+  viewport,
+  matchPercent: match,
+  mismatchPercent: mismatch,
+  status,
+  viewportFallbackUsed: topMismatches.includes('viewport fallback used: no usable Figma node bounds'),
+  artifacts: {
+    referenceImage: referenceImage || null,
+    screenshot: screenshot || null,
+    diffImage: diffImage || null,
+    backstopHtmlReport: backstopSummary?.htmlReport || null,
+    backstopCiReport: backstopSummary?.ciReport || null,
+    backstopSummary: backstopSummaryPath || null,
+    pixelmatchReport: pixelmatchReportPath || null,
+  },
+  topMismatches,
+  backstop: backstopSummary,
+  pixelmatch: pixelmatchReport,
+};
+
+const jsonPath = path.join(outputDir, 'report.json');
+const summaryPath = path.join(outputDir, 'summary.md');
+fs.writeFileSync(jsonPath, JSON.stringify(report, null, 2));
+
+const lines = [];
+lines.push('# Layout report');
+lines.push('');
+if (figma) lines.push(`- **Figma:** ${figma}`);
+if (page) lines.push(`- **Page:** ${page}`);
+if (viewport) lines.push(`- **Viewport:** ${viewport}`);
+if (report.viewportFallbackUsed) lines.push('- **Viewport source:** fallback (Figma bounds were unavailable)');
+if (match != null) lines.push(`- **Match:** ${match}%`);
+if (mismatch != null) lines.push(`- **Mismatch:** ${mismatch}%`);
+lines.push(`- **Status:** ${status}`);
+lines.push('');
+lines.push('## Artifacts');
+lines.push(`- reference image: ${referenceImage || 'n/a'}`);
+lines.push(`- screenshot: ${screenshot || 'n/a'}`);
+lines.push(`- diff image: ${diffImage || 'n/a'}`);
+lines.push(`- backstop html report: ${backstopSummary?.htmlReport || 'n/a'}`);
+lines.push(`- report json: ${jsonPath}`);
+lines.push('');
+lines.push('## Top mismatches');
+if (topMismatches.length) {
+  for (const item of topMismatches) lines.push(`- ${item}`);
+} else {
+  lines.push('- n/a');
+}
+
+fs.writeFileSync(summaryPath, `${lines.join('\n')}\n`);
+console.log(JSON.stringify({ ok: true, report: jsonPath, summary: summaryPath, status, mismatch }, null, 2));
