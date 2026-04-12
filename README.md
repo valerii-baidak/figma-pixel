@@ -22,3 +22,6 @@ Main packages used by the skill:
 - `backstopjs`
 - `pixelmatch`
 - `pngjs`
+
+Repository:
+- https://github.com/valerii-baidak/figma-pixel
