@@ -17,6 +17,12 @@ You need a Figma personal access token for this skill to work.
 How to create a Figma token:
 - https://help.figma.com/hc/en-us/articles/8085703771159-Manage-personal-access-tokens
 
+If Chromium system libraries are missing on Linux, install them with:
+
+```bash
+apt-get update && apt-get install -y libnspr4 libnss3 libatk1.0-0 libatk-bridge2.0-0 libx11-xcb1 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2 libpangocairo-1.0-0 libgtk-3-0
+```
+
 Main packages used by the skill:
 - `playwright`
 - `backstopjs`
