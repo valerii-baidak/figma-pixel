@@ -234,7 +234,23 @@ function runPixelmatch(pixelmatchScript, referenceImage, screenshotPath, pixelma
   return { diffPath, reportPath, report };
 }
 
-function buildTopMismatches({ hasReferenceImage, viewport, renderJson, backstopJson, exportJson }) {
+function runOpenCvAnalysis(referenceImage, screenshotPath, diffPath, pixelmatchDir) {
+  const scriptPath = path.join(__dirname, 'opencv-analyze-diff.cjs');
+  if (!fs.existsSync(scriptPath)) return { reportPath: '', report: null };
+
+  const result = runNode(scriptPath, [referenceImage, screenshotPath, diffPath, path.join(pixelmatchDir, 'opencv-report.json')]);
+  const reportPath = path.join(pixelmatchDir, 'opencv-report.json');
+  const report = parseJson(result.stdout, null) || readJsonIfExists(reportPath) || {
+    ok: false,
+    error: result.stderr || 'Node diff region analysis failed',
+    reportPath,
+  };
+
+  if (!fs.existsSync(reportPath) && report) writeJson(reportPath, report);
+  return { reportPath, report };
+}
+
+function buildTopMismatches({ hasReferenceImage, viewport, renderJson, backstopJson, exportJson, pixelmatchReport, opencvReport }) {
   const top = [];
   if (!hasReferenceImage) top.push('reference image missing: figma/reference-image.png');
   if (exportJson && exportJson.ok === false) top.push('figma image export failed');
@@ -242,6 +258,10 @@ function buildTopMismatches({ hasReferenceImage, viewport, renderJson, backstopJ
   if (renderJson.failedRequests?.length) top.push(`failed requests: ${renderJson.failedRequests.length}`);
   if (renderJson.badResponses?.length) top.push(`bad responses: ${renderJson.badResponses.length}`);
   if (backstopJson?.exitCode && backstopJson.exitCode !== 0) top.push(`backstop exit: ${backstopJson.exitCode}`);
+  if (pixelmatchReport?.diffPercent != null) top.push(`pixel mismatch: ${pixelmatchReport.diffPercent}%`);
+  if (opencvReport?.ok && Array.isArray(opencvReport.summary)) {
+    top.push(...opencvReport.summary.slice(0, 3));
+  }
   return top;
 }
 
@@ -256,6 +276,7 @@ function runFinalReport(reportScript, options) {
     '--diff', options.diffPath,
     '--backstopSummary', options.backstopSummaryPath,
     '--pixelmatchReport', options.pixelmatchReportPath,
+    '--opencvReport', options.opencvReportPath,
     '--top', options.top.join('|'),
   ]);
   if (result.status !== 0) failWith(result);
@@ -332,11 +353,23 @@ if (hasReferenceImage) {
 }
 
 let pixelmatch = { diffPath: '', reportPath: '', report: null };
+let opencv = { reportPath: '', report: null };
 if (hasReferenceImage) {
   pixelmatch = runPixelmatch(pixelmatchScript, referenceImagePath, screenshotPath, pixelmatchDir);
+  if (pixelmatch.diffPath) {
+    opencv = runOpenCvAnalysis(referenceImagePath, screenshotPath, pixelmatch.diffPath, pixelmatchDir);
+  }
 }
 
-const top = buildTopMismatches({ hasReferenceImage, viewport, renderJson, backstopJson, exportJson });
+const top = buildTopMismatches({
+  hasReferenceImage,
+  viewport,
+  renderJson,
+  backstopJson,
+  exportJson,
+  pixelmatchReport: pixelmatch.report,
+  opencvReport: opencv.report,
+});
 const final = runFinalReport(reportScript, {
   outputDir: finalDir,
   figmaUrl,
@@ -347,6 +380,7 @@ const final = runFinalReport(reportScript, {
   diffPath: pixelmatch.diffPath,
   backstopSummaryPath: fs.existsSync(backstopSummaryPath) ? backstopSummaryPath : '',
   pixelmatchReportPath: pixelmatch.reportPath,
+  opencvReportPath: opencv.reportPath,
   top,
 });
 
@@ -367,6 +401,7 @@ const runResult = {
     backstopSummary: fs.existsSync(backstopSummaryPath) ? backstopSummaryPath : null,
     pixelmatchReport: pixelmatch.reportPath || null,
     pixelmatchDiff: pixelmatch.diffPath || null,
+    opencvReport: opencv.reportPath || null,
     finalReport: path.join(finalDir, 'report.json'),
     finalSummary: path.join(finalDir, 'summary.md'),
   },
@@ -382,6 +417,7 @@ const runResult = {
   render: renderJson,
   backstop: backstopJson,
   pixelmatch: pixelmatch.report,
+  opencv,
   final,
 };
 

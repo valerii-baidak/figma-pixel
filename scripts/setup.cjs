@@ -20,119 +20,54 @@ const packageJson = {
   }
 };
 
+function detectOpenCvJsRuntime() {
+  const opencvJsPath = path.join(skillDir, 'node_modules', '@techstark', 'opencv-js');
+  return {
+    ok: fs.existsSync(opencvJsPath),
+    engine: 'opencv-js',
+    note: fs.existsSync(opencvJsPath)
+      ? 'OpenCV.js runtime is available.'
+      : 'OpenCV.js not detected yet. Run setup to enable OpenCV-based diff analysis.'
+  };
+}
+
 fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2));
 
-const steps = [];
-const playwrightBin = path.join(skillDir, 'node_modules', '.bin', process.platform === 'win32' ? 'playwright.cmd' : 'playwright');
-const chromiumLinuxPackages = [
-  'libnspr4',
-  'libnss3',
-  'libatk1.0-0',
-  'libatk-bridge2.0-0',
-  'libx11-xcb1',
-  'libxcomposite1',
-  'libxdamage1',
-  'libxfixes3',
-  'libxrandr2',
-  'libgbm1',
-  'libasound2',
-  'libpangocairo-1.0-0',
-  'libgtk-3-0'
-];
+const command = 'npm install';
+const result = spawnSync('npm', ['install'], {
+  cwd: skillDir,
+  stdio: 'pipe',
+  encoding: 'utf8',
+  shell: false,
+});
 
-function runStep(command, args) {
-  const result = spawnSync(command, args, {
-    cwd: skillDir,
-    stdio: 'pipe',
-    encoding: 'utf8',
-    shell: false,
-  });
-
-  steps.push({
-    command: [command, ...args].join(' '),
-    exitCode: result.status,
-    stdout: result.stdout,
-    stderr: result.stderr,
-  });
-
-  return result;
-}
-
-const npmInstall = runStep('npm', ['install']);
-if (npmInstall.status !== 0) {
-  const report = {
-    ok: false,
-    cwd: skillDir,
-    dependencies: Object.keys(packageJson.dependencies),
-    steps,
-  };
-  fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
-  console.error('figma-pixel setup failed');
-  console.error('command: npm install');
-  console.error(`report: ${reportPath}`);
-  console.error(npmInstall.stderr || npmInstall.stdout || 'Unknown setup error');
-  process.exit(npmInstall.status || 1);
-}
-
-const playwrightInstall = runStep(playwrightBin, ['install', 'chromium']);
-let playwrightDeps = null;
-let aptInstall = null;
-
-if (process.platform === 'linux') {
-  playwrightDeps = runStep(playwrightBin, ['install-deps', 'chromium']);
-
-  if (playwrightDeps.status !== 0) {
-    const aptCheck = runStep('sh', ['-lc', 'command -v apt-get >/dev/null 2>&1']);
-    if (aptCheck.status === 0) {
-      aptInstall = runStep('sh', ['-lc', `apt-get update && apt-get install -y ${chromiumLinuxPackages.join(' ')}`]);
-    }
-  }
-}
-
-const ok = playwrightInstall.status === 0 && (
-  !playwrightDeps || playwrightDeps.status === 0 || (aptInstall && aptInstall.status === 0)
-);
+const nodeRegionAnalysis = detectOpenCvJsRuntime();
 
 const report = {
-  ok,
+  ok: result.status === 0,
+  command,
   cwd: skillDir,
+  exitCode: result.status,
+  stdout: result.stdout,
+  stderr: result.stderr,
   dependencies: Object.keys(packageJson.dependencies),
-  browsers: ['chromium'],
-  os: process.platform,
-  linuxPackages: process.platform === 'linux' ? chromiumLinuxPackages : [],
-  steps,
+  nodeRegionAnalysis,
 };
 
 fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
 
-if (!ok) {
-  let failedCommand = `${playwrightBin} install chromium`;
-  let failedResult = playwrightInstall;
-
-  if (playwrightDeps && playwrightDeps.status !== 0) {
-    failedCommand = `${playwrightBin} install-deps chromium`;
-    failedResult = playwrightDeps;
-  }
-
-  if (aptInstall && aptInstall.status !== 0) {
-    failedCommand = `apt-get update && apt-get install -y ${chromiumLinuxPackages.join(' ')}`;
-    failedResult = aptInstall;
-  }
-
+if (result.status !== 0) {
   console.error('figma-pixel setup failed');
-  console.error(`command: ${failedCommand}`);
+  console.error(`command: ${command}`);
   console.error(`report: ${reportPath}`);
-  console.error(failedResult.stderr || failedResult.stdout || 'Unknown browser setup error');
-  if (process.platform === 'linux') {
-    console.error(`manual apt packages: ${chromiumLinuxPackages.join(' ')}`);
-  }
-  process.exit(failedResult.status || 1);
+  console.error(result.stderr || result.stdout || 'Unknown setup error');
+  process.exit(result.status || 1);
 }
 
 console.log(JSON.stringify({
   ok: true,
   report: reportPath,
   installed: Object.keys(packageJson.dependencies),
-  browsers: ['chromium']
+  nodeRegionAnalysis,
 }, null, 2));
 process.exit(0);

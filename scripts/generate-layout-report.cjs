@@ -31,12 +31,14 @@ const screenshot = options.screenshot || '';
 const diffImage = options.diff || '';
 const backstopSummaryPath = options.backstopSummary || '';
 const pixelmatchReportPath = options.pixelmatchReport || '';
+const opencvReportPath = options.opencvReport || '';
 const topMismatchesRaw = options.top || '';
 
 fs.mkdirSync(outputDir, { recursive: true });
 
 const backstopSummary = readJsonSafe(backstopSummaryPath);
 const pixelmatchReport = readJsonSafe(pixelmatchReportPath);
+const opencvReport = readJsonSafe(opencvReportPath);
 
 const mismatch = pixelmatchReport?.diffPercent ?? null;
 const match = mismatch == null ? null : +(100 - Number(mismatch)).toFixed(2);
@@ -68,10 +70,12 @@ const report = {
     backstopCiReport: backstopSummary?.ciReport || null,
     backstopSummary: backstopSummaryPath || null,
     pixelmatchReport: pixelmatchReportPath || null,
+    opencvReport: opencvReportPath || null,
   },
   topMismatches,
   backstop: backstopSummary,
   pixelmatch: pixelmatchReport,
+  opencv: opencvReport,
 };
 
 const jsonPath = path.join(outputDir, 'report.json');
@@ -101,6 +105,19 @@ if (topMismatches.length) {
   for (const item of topMismatches) lines.push(`- ${item}`);
 } else {
   lines.push('- n/a');
+}
+
+lines.push('');
+lines.push('## OpenCV analysis');
+if (opencvReport?.ok) {
+  lines.push(`- difference regions: ${opencvReport.differenceRegionCount ?? 'n/a'}`);
+  if (Array.isArray(opencvReport.summary) && opencvReport.summary.length) {
+    for (const item of opencvReport.summary.slice(0, 5)) lines.push(`- ${item}`);
+  } else {
+    lines.push('- n/a');
+  }
+} else {
+  lines.push(`- ${opencvReport?.error || 'not available'}`);
 }
 
 fs.writeFileSync(summaryPath, `${lines.join('\n')}\n`);

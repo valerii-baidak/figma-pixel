@@ -19,6 +19,16 @@ If install-time setup was skipped, the runtime scripts may attempt setup automat
 - `pixelmatch`
 - `pngjs`
 
+## Optional diff-region enrichment
+
+This skill now supports an optional Node.js post-processing step.
+
+Preferred runtime for that step:
+- `node`
+- local `pngjs`
+
+If these are missing, the main pipeline still works and falls back to standard `pixelmatch` output.
+
 ## Credentials
 
 This skill expects:
