@@ -84,7 +84,6 @@ async function main() {
     reason: target.reason,
     requestedNodeType: target.requestedNodeType || null,
     exportNodeType: target.exportNodeType || null,
-    imageUrl,
     imagePath: outputPath,
   }, null, 2));
 }

@@ -2,28 +2,32 @@
 
 const fs = require('fs');
 const path = require('path');
-const { spawnSync } = require('child_process');
-
-function ensureSetup() {
-  const setupScript = path.resolve(__dirname, 'setup.cjs');
-  const nodeModulesDir = path.resolve(__dirname, '../node_modules');
-  if (fs.existsSync(nodeModulesDir)) return;
-
-  const result = spawnSync(process.execPath, [setupScript], {
-    cwd: path.resolve(__dirname, '..'),
-    stdio: 'inherit',
-  });
-
-  if (result.status !== 0) {
-    console.error('Automatic setup failed for fetch-figma-api.cjs');
-    console.error('See ../setup-report.json for details.');
-    process.exit(result.status || 1);
-  }
-}
 
 function fail(message) {
   console.error(message);
   process.exit(1);
+}
+
+function ensureRuntimePresent() {
+  const candidates = ['playwright', 'pixelmatch', 'pngjs', '@techstark/opencv-js'];
+  const missing = [];
+
+  for (const name of candidates) {
+    try {
+      require.resolve(name);
+    } catch {
+      missing.push(name);
+    }
+  }
+
+  if (!missing.length) return;
+
+  fail([
+    `Missing runtime dependencies: ${missing.join(', ')}`,
+    'Install them in the host environment:',
+    'npm install playwright pixelmatch pngjs @techstark/opencv-js',
+    'npx playwright install chromium',
+  ].join('\n'));
 }
 
 async function fetchJson(url, headers, label) {
@@ -34,7 +38,7 @@ async function fetchJson(url, headers, label) {
   return response.json();
 }
 
-ensureSetup();
+ensureRuntimePresent();
 
 async function main() {
   const figmaUrl = process.argv[2];
@@ -46,7 +50,7 @@ async function main() {
 
   const token = process.env.FIGMA_TOKEN;
   if (!token) {
-    fail('Missing FIGMA_TOKEN');
+    fail('Missing FIGMA_TOKEN. Set a Figma personal access token before running this skill.');
   }
 
   let url;

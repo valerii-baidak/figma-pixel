@@ -1,56 +1,35 @@
 # Setup
 
-Install the skill runtime dependencies during skill installation.
+Provide the runtime prerequisites outside the skill package.
 
-## Primary install step
+## Required runtime
 
-```bash
-cd /path/to/figma-pixel
-node scripts/setup.cjs
-```
-
-This is the intended install-time setup hook.
-If install-time setup was skipped, the runtime scripts may attempt setup automatically as a fallback.
-
-## What it installs
-
+The environment running this skill should already provide:
 - `playwright`
 - `pixelmatch`
 - `pngjs`
-
-## Optional diff-region enrichment
-
-This skill now supports an optional Node.js post-processing step.
-
-Preferred runtime for that step:
-- `node`
-- local `pngjs`
-
-If these are missing, the main pipeline still works and falls back to standard `pixelmatch` output.
+- `@techstark/opencv-js`
+- a Chromium-compatible browser executable, or `CHROMIUM_PATH`
 
 ## Credentials
 
 This skill expects:
 - `FIGMA_TOKEN`
 
-Package setup can succeed without it, but Figma API scripts will not work until it is present.
+The token is used only for official Figma API requests.
+Do not persist the token in logs or artifacts.
 
-## Notes
+## Module resolution overrides
 
-- `render-page.cjs` expects `playwright` to be installed.
-- `pixelmatch-runner.cjs` expects `pngjs` and `pixelmatch`.
-- You may override module resolution with:
-  - `PLAYWRIGHT_MODULE_PATH`
-  - `PNGJS_MODULE_PATH`
-  - `PIXELMATCH_MODULE_PATH`
+If the runtime does not resolve modules normally, use environment overrides:
+- `PLAYWRIGHT_MODULE_PATH`
+- `PNGJS_MODULE_PATH`
+- `PIXELMATCH_MODULE_PATH`
+- `CHROMIUM_PATH`
 
-## Failure reporting
+## Failure handling
 
-If setup fails, the skill writes:
-- `setup-report.json`
-
-Scripts should surface:
-- which script triggered setup
-- the attempted command
-- stdout/stderr
-- where to inspect the setup report
+If dependencies are missing:
+- do not attempt installation from inside the skill
+- stop and report the missing package or browser clearly
+- prefer explicit prerequisite errors over fallback setup logic

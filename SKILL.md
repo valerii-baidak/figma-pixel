@@ -30,17 +30,26 @@ Prerequisites:
 - `FIGMA_TOKEN` must be set
 - the target page must be reachable through a stable local or remote URL
 - the implementation project must allow normal page rendering, fonts, and asset loading
+- the runtime environment must already provide the required Node.js packages and browser executable
 
-This skill is intended to install its runtime dependencies during skill installation by running:
+Install these packages in the host environment before using the skill:
 
 ```bash
-node scripts/setup.cjs
+npm install playwright pixelmatch pngjs @techstark/opencv-js
+npx playwright install chromium
 ```
 
-Treat install-time setup as the primary path.
-Automatic setup during script execution is only a fallback when install-time setup was skipped.
+On Linux, Chromium may also require system libraries:
 
-Read `references/setup.md` for details.
+```bash
+apt-get update && apt-get install -y libnspr4 libnss3 libatk1.0-0 libatk-bridge2.0-0 libx11-xcb1 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2 libpangocairo-1.0-0 libgtk-3-0
+```
+
+This skill does not install dependencies at runtime.
+Without these packages, system libraries, and a working browser executable, the skill will not work fully and some flows will fail immediately.
+If required packages are missing, stop and report the missing dependency clearly.
+
+Read `references/setup.md` for environment expectations.
 
 ## Workflow
 
@@ -178,7 +187,6 @@ When this skill is used, always try to return:
 
 ## References
 
-- Read `references/setup.md` before first use.
 - Read `references/figma.md` for the Figma input layer.
 - Read `references/workflow.md` for a concise execution checklist.
 - Read `references/artifacts.md` for the run directory contract and expected artifact outputs.

@@ -2,27 +2,30 @@
 
 const fs = require('fs');
 const path = require('path');
-const { spawnSync } = require('child_process');
 
-function ensureSetup() {
-  const localPngjs = path.resolve(__dirname, '../node_modules/pngjs');
-  const localPixelmatch = path.resolve(__dirname, '../node_modules/pixelmatch');
-  if (fs.existsSync(localPngjs) && fs.existsSync(localPixelmatch)) return;
+function ensureRuntimePresent() {
+  const required = ['pngjs', 'pixelmatch'];
+  const missing = [];
 
-  const setupScript = path.resolve(__dirname, 'setup.cjs');
-  const result = spawnSync(process.execPath, [setupScript], {
-    cwd: path.resolve(__dirname, '..'),
-    stdio: 'inherit',
-  });
-
-  if (result.status !== 0) {
-    console.error('Automatic setup failed for pixelmatch-runner.cjs');
-    console.error('See ../setup-report.json for details.');
-    process.exit(result.status || 1);
+  for (const name of required) {
+    try {
+      require.resolve(name);
+    } catch {
+      missing.push(name);
+    }
   }
+
+  if (!missing.length) return;
+
+  console.error([
+    `Missing dependencies: ${missing.join(', ')}`,
+    'Install them in the host environment:',
+    'npm install pixelmatch pngjs',
+  ].join('\n'));
+  process.exit(1);
 }
 
-ensureSetup();
+ensureRuntimePresent();
 
 function loadModule(name, fallbacks = []) {
   const candidates = [name, ...fallbacks].filter(Boolean);

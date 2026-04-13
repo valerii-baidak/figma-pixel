@@ -2,6 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
+
 const { spawnSync } = require('child_process');
 
 function runNode(scriptPath, args) {
@@ -289,112 +290,116 @@ const renderScript = path.resolve(__dirname, 'render-page.cjs');
 const pixelmatchScript = path.resolve(__dirname, 'pixelmatch-runner.cjs');
 const reportScript = path.resolve(__dirname, 'generate-layout-report.cjs');
 
-const manifest = initRun(initScript, projectSlug, runId);
-const figmaDir = manifest.subdirs.figma;
-const captureDir = manifest.subdirs.capture;
-const pixelmatchDir = manifest.subdirs.pixelmatch;
-const finalDir = manifest.subdirs.final;
-const sharedFigmaRoot = manifest.sharedDirs?.figma || path.join(manifest.projectDir, 'shared', 'figma');
+function main() {
+  const manifest = initRun(initScript, projectSlug, runId);
+  const figmaDir = manifest.subdirs.figma;
+  const captureDir = manifest.subdirs.capture;
+  const pixelmatchDir = manifest.subdirs.pixelmatch;
+  const finalDir = manifest.subdirs.final;
+  const sharedFigmaRoot = manifest.sharedDirs?.figma || path.join(manifest.projectDir, 'shared', 'figma');
 
-const parsedFigma = parseFigma(parseScript, figmaUrl, figmaDir);
-const sharedPaths = getSharedFigmaPaths(sharedFigmaRoot, parsedFigma);
-primeRunFigmaDirFromShared(sharedPaths, figmaDir);
+  const parsedFigma = parseFigma(parseScript, figmaUrl, figmaDir);
+  const sharedPaths = getSharedFigmaPaths(sharedFigmaRoot, parsedFigma);
+  primeRunFigmaDirFromShared(sharedPaths, figmaDir);
 
-let fetchedFigma = readJsonIfExists(path.join(figmaDir, 'fetch-result.json'));
-if (!fetchedFigma?.ok) {
-  fetchedFigma = fetchFigma(fetchScript, figmaUrl, figmaDir);
+  let fetchedFigma = readJsonIfExists(path.join(figmaDir, 'fetch-result.json'));
+  if (!fetchedFigma?.ok) {
+    fetchedFigma = fetchFigma(fetchScript, figmaUrl, figmaDir);
+  }
+
+  const figmaNodePath = path.join(figmaDir, 'figma-node.json');
+  const figmaNodeJson = readJsonIfExists(figmaNodePath);
+  const referenceImagePath = path.join(figmaDir, 'reference-image.png');
+  let exportJson = readJsonIfExists(path.join(figmaDir, 'export-image-result.json'));
+  let exportAttempts = readJsonIfExists(path.join(figmaDir, 'export-image-attempts.json')) || [];
+
+  if (!fs.existsSync(referenceImagePath) || !exportJson?.ok) {
+    const exportState = exportFigmaImageRobust(exportScript, fetchedFigma.fileKey, fetchedFigma.nodeId, referenceImagePath, figmaNodeJson, figmaNodePath);
+    exportJson = exportState.result;
+    exportAttempts = exportState.attempts || [];
+    writeJson(path.join(figmaDir, 'export-image-result.json'), exportJson || {});
+    writeJson(path.join(figmaDir, 'export-image-attempts.json'), exportAttempts);
+  }
+
+  let viewport = readJsonIfExists(path.join(figmaDir, 'viewport.json'));
+  if (!viewport?.width || !viewport?.height) {
+    viewport = deriveViewportFromFigma(figmaNodeJson, parsedFigma.nodeId);
+    writeJson(path.join(figmaDir, 'viewport.json'), viewport);
+  }
+
+  persistRunFigmaDirToShared(figmaDir, sharedPaths);
+
+  const hasReferenceImage = fs.existsSync(referenceImagePath);
+  const screenshotPath = path.join(captureDir, 'captured-page.png');
+  const renderJson = renderPage(renderScript, pageUrl, screenshotPath, viewport, captureDir);
+
+  let pixelmatch = { diffPath: '', reportPath: '', report: null };
+  let opencv = { reportPath: '', report: null };
+  if (hasReferenceImage) {
+    const plannedDiffPath = path.join(pixelmatchDir, 'diff.png');
+    opencv = runOpenCvAnalysis(referenceImagePath, screenshotPath, plannedDiffPath, pixelmatchDir);
+    pixelmatch = runPixelmatch(pixelmatchScript, referenceImagePath, screenshotPath, pixelmatchDir);
+  }
+
+  const top = buildTopMismatches({
+    hasReferenceImage,
+    viewport,
+    renderJson,
+    exportJson,
+    pixelmatchReport: pixelmatch.report,
+    opencvReport: opencv.report,
+  });
+  const final = runFinalReport(reportScript, {
+    outputDir: finalDir,
+    figmaUrl,
+    pageUrl,
+    viewport,
+    referenceImage: hasReferenceImage ? referenceImagePath : '',
+    screenshotPath,
+    diffPath: pixelmatch.diffPath,
+    pixelmatchReportPath: pixelmatch.reportPath,
+    opencvReportPath: opencv.reportPath,
+    top,
+  });
+
+  const runResult = {
+    ok: true,
+    runDir: manifest.runDir,
+    manifestPath: path.join(manifest.runDir, 'run-manifest.json'),
+    viewport,
+    fallbackUsed: viewport.fallbackUsed,
+    artifacts: {
+      figmaFile: path.join(figmaDir, 'figma-file.json'),
+      figmaNode: path.join(figmaDir, 'figma-node.json'),
+      parsedFigmaUrl: path.join(figmaDir, 'parsed-figma-url.json'),
+      viewport: path.join(figmaDir, 'viewport.json'),
+      referenceImage: hasReferenceImage ? referenceImagePath : null,
+      renderScreenshot: screenshotPath,
+      renderReport: path.join(captureDir, 'render-result.json'),
+      pixelmatchReport: pixelmatch.reportPath || null,
+      pixelmatchDiff: pixelmatch.diffPath || null,
+      opencvReport: opencv.reportPath || null,
+      finalReport: path.join(finalDir, 'report.json'),
+      finalSummary: path.join(finalDir, 'summary.md'),
+    },
+    parsedFigma,
+    fetchedFigma,
+    exportImage: exportJson,
+    exportAttempts,
+    sharedFigmaCache: {
+      root: sharedFigmaRoot,
+      key: sharedPaths.key,
+      cacheDir: sharedPaths.cacheDir,
+    },
+    render: renderJson,
+    pixelmatch: pixelmatch.report,
+    opencv,
+    final,
+  };
+
+  writeJson(path.join(manifest.runDir, 'run-result.json'), runResult);
+  writeJson(path.join(manifest.runDir, 'pipeline-summary.json'), runResult);
+  console.log(JSON.stringify(runResult, null, 2));
 }
 
-const figmaNodePath = path.join(figmaDir, 'figma-node.json');
-const figmaNodeJson = readJsonIfExists(figmaNodePath);
-const referenceImagePath = path.join(figmaDir, 'reference-image.png');
-let exportJson = readJsonIfExists(path.join(figmaDir, 'export-image-result.json'));
-let exportAttempts = readJsonIfExists(path.join(figmaDir, 'export-image-attempts.json')) || [];
-
-if (!fs.existsSync(referenceImagePath) || !exportJson?.ok) {
-  const exportState = exportFigmaImageRobust(exportScript, fetchedFigma.fileKey, fetchedFigma.nodeId, referenceImagePath, figmaNodeJson, figmaNodePath);
-  exportJson = exportState.result;
-  exportAttempts = exportState.attempts || [];
-  writeJson(path.join(figmaDir, 'export-image-result.json'), exportJson || {});
-  writeJson(path.join(figmaDir, 'export-image-attempts.json'), exportAttempts);
-}
-
-let viewport = readJsonIfExists(path.join(figmaDir, 'viewport.json'));
-if (!viewport?.width || !viewport?.height) {
-  viewport = deriveViewportFromFigma(figmaNodeJson, parsedFigma.nodeId);
-  writeJson(path.join(figmaDir, 'viewport.json'), viewport);
-}
-
-persistRunFigmaDirToShared(figmaDir, sharedPaths);
-
-const hasReferenceImage = fs.existsSync(referenceImagePath);
-const screenshotPath = path.join(captureDir, 'captured-page.png');
-const renderJson = renderPage(renderScript, pageUrl, screenshotPath, viewport, captureDir);
-
-let pixelmatch = { diffPath: '', reportPath: '', report: null };
-let opencv = { reportPath: '', report: null };
-if (hasReferenceImage) {
-  const plannedDiffPath = path.join(pixelmatchDir, 'diff.png');
-  opencv = runOpenCvAnalysis(referenceImagePath, screenshotPath, plannedDiffPath, pixelmatchDir);
-  pixelmatch = runPixelmatch(pixelmatchScript, referenceImagePath, screenshotPath, pixelmatchDir);
-}
-
-const top = buildTopMismatches({
-  hasReferenceImage,
-  viewport,
-  renderJson,
-  exportJson,
-  pixelmatchReport: pixelmatch.report,
-  opencvReport: opencv.report,
-});
-const final = runFinalReport(reportScript, {
-  outputDir: finalDir,
-  figmaUrl,
-  pageUrl,
-  viewport,
-  referenceImage: hasReferenceImage ? referenceImagePath : '',
-  screenshotPath,
-  diffPath: pixelmatch.diffPath,
-  pixelmatchReportPath: pixelmatch.reportPath,
-  opencvReportPath: opencv.reportPath,
-  top,
-});
-
-const runResult = {
-  ok: true,
-  runDir: manifest.runDir,
-  manifestPath: path.join(manifest.runDir, 'run-manifest.json'),
-  viewport,
-  fallbackUsed: viewport.fallbackUsed,
-  artifacts: {
-    figmaFile: path.join(figmaDir, 'figma-file.json'),
-    figmaNode: path.join(figmaDir, 'figma-node.json'),
-    parsedFigmaUrl: path.join(figmaDir, 'parsed-figma-url.json'),
-    viewport: path.join(figmaDir, 'viewport.json'),
-    referenceImage: hasReferenceImage ? referenceImagePath : null,
-    renderScreenshot: screenshotPath,
-    renderReport: path.join(captureDir, 'render-result.json'),
-    pixelmatchReport: pixelmatch.reportPath || null,
-    pixelmatchDiff: pixelmatch.diffPath || null,
-    opencvReport: opencv.reportPath || null,
-    finalReport: path.join(finalDir, 'report.json'),
-    finalSummary: path.join(finalDir, 'summary.md'),
-  },
-  parsedFigma,
-  fetchedFigma,
-  exportImage: exportJson,
-  exportAttempts,
-  sharedFigmaCache: {
-    root: sharedFigmaRoot,
-    key: sharedPaths.key,
-    cacheDir: sharedPaths.cacheDir,
-  },
-  render: renderJson,
-  pixelmatch: pixelmatch.report,
-  opencv,
-  final,
-};
-
-writeJson(path.join(manifest.runDir, 'run-result.json'), runResult);
-writeJson(path.join(manifest.runDir, 'pipeline-summary.json'), runResult);
-console.log(JSON.stringify(runResult, null, 2));
+main();

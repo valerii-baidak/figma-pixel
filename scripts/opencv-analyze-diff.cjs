@@ -2,8 +2,29 @@
 
 const fs = require('fs');
 const path = require('path');
-const { PNG } = require('pngjs');
-const cvModule = require('@techstark/opencv-js');
+
+function emit(payload, code = 0) {
+  process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
+  process.exit(code);
+}
+
+function loadRequiredModule(name, installCommand) {
+  try {
+    return require(name);
+  } catch {
+    emit({
+      ok: false,
+      error: `Missing dependency: ${name}`,
+      help: [
+        'Install the required runtime in the host environment:',
+        installCommand,
+      ].join('\n'),
+    }, 0);
+  }
+}
+
+const { PNG } = loadRequiredModule('pngjs', 'npm install pngjs');
+const cvModule = loadRequiredModule('@techstark/opencv-js', 'npm install @techstark/opencv-js');
 
 if (typeof global.ImageData === 'undefined') {
   global.ImageData = class ImageDataPolyfill {
@@ -13,11 +34,6 @@ if (typeof global.ImageData === 'undefined') {
       this.height = height;
     }
   };
-}
-
-function emit(payload, code = 0) {
-  process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
-  process.exit(code);
 }
 
 function readPng(filePath) {

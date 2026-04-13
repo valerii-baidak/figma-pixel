@@ -2,30 +2,55 @@
 
 const fs = require('fs');
 const path = require('path');
-const { spawnSync } = require('child_process');
 
-function ensureSetup() {
-  const localPlaywright = path.resolve(__dirname, '../node_modules/playwright');
-  const localPlaywrightCore = path.resolve(__dirname, '../node_modules/playwright-core');
-  const chromiumPath = process.env.CHROMIUM_PATH;
-  const hasBrowser = chromiumPath ? fs.existsSync(chromiumPath) : true;
+function hasCommand(command) {
+  const paths = String(process.env.PATH || '').split(path.delimiter).filter(Boolean);
+  const extensions = process.platform === 'win32'
+    ? String(process.env.PATHEXT || '.EXE;.CMD;.BAT;.COM').split(';')
+    : [''];
 
-  if ((fs.existsSync(localPlaywright) || fs.existsSync(localPlaywrightCore)) && hasBrowser) return;
-
-  const setupScript = path.resolve(__dirname, 'setup.cjs');
-  const result = spawnSync(process.execPath, [setupScript], {
-    cwd: path.resolve(__dirname, '..'),
-    stdio: 'inherit',
-  });
-
-  if (result.status !== 0) {
-    console.error('Automatic setup failed for render-page.cjs');
-    console.error('See ../setup-report.json for details.');
-    process.exit(result.status || 1);
+  for (const dir of paths) {
+    for (const ext of extensions) {
+      const candidate = path.join(dir, `${command}${ext}`);
+      if (fs.existsSync(candidate)) return true;
+    }
   }
+
+  return false;
 }
 
-ensureSetup();
+function ensureRuntimePresent() {
+  const requiredAny = ['playwright', 'playwright-core'];
+  const hasPlaywright = requiredAny.some((name) => {
+    try {
+      require.resolve(name);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+
+  const chromiumPath = process.env.CHROMIUM_PATH;
+  const hasBrowser = chromiumPath
+    ? fs.existsSync(chromiumPath)
+    : hasCommand('chromium') || hasCommand('chromium-browser') || hasCommand('google-chrome');
+
+  const problems = [];
+  if (!hasPlaywright) problems.push('Missing dependency: playwright');
+  if (!hasBrowser) problems.push('Missing browser executable: install Chromium or set CHROMIUM_PATH');
+
+  if (!problems.length) return;
+
+  console.error([
+    ...problems,
+    'Install the required runtime in the host environment:',
+    'npm install playwright',
+    'npx playwright install chromium',
+  ].join('\n'));
+  process.exit(1);
+}
+
+ensureRuntimePresent();
 
 function loadPlaywright() {
   const moduleOverride = process.env.PLAYWRIGHT_MODULE_PATH;
@@ -37,7 +62,7 @@ function loadPlaywright() {
     } catch {}
   }
 
-  throw new Error(`Playwright module not found. Install it first or set PLAYWRIGHT_MODULE_PATH. Checked: ${candidates.join(', ')}`);
+  throw new Error(`Playwright module not found. Install playwright or set PLAYWRIGHT_MODULE_PATH. Checked: ${candidates.join(', ')}`);
 }
 
 const { chromium } = loadPlaywright();
