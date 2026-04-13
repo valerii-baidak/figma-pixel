@@ -334,10 +334,9 @@ const renderJson = renderPage(renderScript, pageUrl, screenshotPath, viewport, c
 let pixelmatch = { diffPath: '', reportPath: '', report: null };
 let opencv = { reportPath: '', report: null };
 if (hasReferenceImage) {
+  const plannedDiffPath = path.join(pixelmatchDir, 'diff.png');
+  opencv = runOpenCvAnalysis(referenceImagePath, screenshotPath, plannedDiffPath, pixelmatchDir);
   pixelmatch = runPixelmatch(pixelmatchScript, referenceImagePath, screenshotPath, pixelmatchDir);
-  if (pixelmatch.diffPath) {
-    opencv = runOpenCvAnalysis(referenceImagePath, screenshotPath, pixelmatch.diffPath, pixelmatchDir);
-  }
 }
 
 const top = buildTopMismatches({

@@ -121,10 +121,10 @@ When available, run the optional Node.js post-processing step after `pixelmatch`
 Always try to produce these artifacts:
 - reference image
 - rendered screenshot
+- diff-region report when the runtime is available
 - diff image
 - mismatch percentage
 - machine-readable report
-- diff-region report when the runtime is available
 
 ## Step 6, make visible layout fixes
 
