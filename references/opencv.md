@@ -33,3 +33,4 @@ Run the OpenCV analysis after:
 3. pixelmatch diff generation
 
 Then merge the resulting findings into `final/report.json` and `final/summary.md`.
+This post-processing now complements the main `Playwright render -> pixelmatch -> OpenCV.js region detection` flow.

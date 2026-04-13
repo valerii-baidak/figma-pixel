@@ -29,14 +29,12 @@ const viewport = options.viewport || '';
 const referenceImage = options.reference || '';
 const screenshot = options.screenshot || '';
 const diffImage = options.diff || '';
-const backstopSummaryPath = options.backstopSummary || '';
 const pixelmatchReportPath = options.pixelmatchReport || '';
 const opencvReportPath = options.opencvReport || '';
 const topMismatchesRaw = options.top || '';
 
 fs.mkdirSync(outputDir, { recursive: true });
 
-const backstopSummary = readJsonSafe(backstopSummaryPath);
 const pixelmatchReport = readJsonSafe(pixelmatchReportPath);
 const opencvReport = readJsonSafe(opencvReportPath);
 
@@ -66,14 +64,10 @@ const report = {
     referenceImage: referenceImage || null,
     screenshot: screenshot || null,
     diffImage: diffImage || null,
-    backstopHtmlReport: backstopSummary?.htmlReport || null,
-    backstopCiReport: backstopSummary?.ciReport || null,
-    backstopSummary: backstopSummaryPath || null,
     pixelmatchReport: pixelmatchReportPath || null,
     opencvReport: opencvReportPath || null,
   },
   topMismatches,
-  backstop: backstopSummary,
   pixelmatch: pixelmatchReport,
   opencv: opencvReport,
 };
@@ -97,7 +91,6 @@ lines.push('## Artifacts');
 lines.push(`- reference image: ${referenceImage || 'n/a'}`);
 lines.push(`- screenshot: ${screenshot || 'n/a'}`);
 lines.push(`- diff image: ${diffImage || 'n/a'}`);
-lines.push(`- backstop html report: ${backstopSummary?.htmlReport || 'n/a'}`);
 lines.push(`- report json: ${jsonPath}`);
 lines.push('');
 lines.push('## Top mismatches');
@@ -115,6 +108,13 @@ if (opencvReport?.ok) {
     for (const item of opencvReport.summary.slice(0, 5)) lines.push(`- ${item}`);
   } else {
     lines.push('- n/a');
+  }
+  if (Array.isArray(opencvReport.largestRegions) && opencvReport.largestRegions.length) {
+    lines.push('');
+    lines.push('### Largest regions');
+    for (const region of opencvReport.largestRegions.slice(0, 5)) {
+      lines.push(`- ${region.zone}: ${region.width}x${region.height}px at (${region.x}, ${region.y}), mean diff ${region.meanAbsDiff}`);
+    }
   }
 } else {
   lines.push(`- ${opencvReport?.error || 'not available'}`);

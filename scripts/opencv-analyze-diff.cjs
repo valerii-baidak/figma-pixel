@@ -51,19 +51,22 @@ function classifyZone(x, y, width, height) {
   return `${vertical}-${horizontal}`;
 }
 
-function buildBinaryMaskMat(cv, png, threshold = 24) {
-  const mask = new cv.Mat.zeros(png.height, png.width, cv.CV_8UC1);
-  for (let y = 0; y < png.height; y += 1) {
-    for (let x = 0; x < png.width; x += 1) {
-      const idx = (y * png.width + x) << 2;
-      const r = png.data[idx];
-      const g = png.data[idx + 1];
-      const b = png.data[idx + 2];
-      const a = png.data[idx + 3];
-      const value = a > 0 && (r + g + b) > threshold ? 255 : 0;
-      mask.ucharPtr(y, x)[0] = value;
-    }
-  }
+function buildBinaryMaskMatFromDiff(cv, referencePng, screenshotPng, threshold = 24) {
+  const referenceMat = pngToMat(cv, referencePng);
+  const screenshotMat = pngToMat(cv, screenshotPng);
+  const diffMat = new cv.Mat();
+  const gray = new cv.Mat();
+  const mask = new cv.Mat();
+
+  cv.absdiff(referenceMat, screenshotMat, diffMat);
+  cv.cvtColor(diffMat, gray, cv.COLOR_RGBA2GRAY, 0);
+  cv.threshold(gray, mask, threshold, 255, cv.THRESH_BINARY);
+
+  referenceMat.delete();
+  screenshotMat.delete();
+  diffMat.delete();
+  gray.delete();
+
   return mask;
 }
 
@@ -103,10 +106,9 @@ async function main() {
   const height = Math.min(referenceRaw.height, screenshotRaw.height, diffRaw.height);
   const reference = cropTo(referenceRaw, width, height);
   const screenshot = cropTo(screenshotRaw, width, height);
-  const diff = cropTo(diffRaw, width, height);
   const imageArea = width * height;
 
-  const thresh = buildBinaryMaskMat(cv, diff, 24);
+  const thresh = buildBinaryMaskMatFromDiff(cv, reference, screenshot, 24);
   const morph = new cv.Mat();
   const kernel = cv.Mat.ones(3, 3, cv.CV_8U);
   const contours = new cv.MatVector();

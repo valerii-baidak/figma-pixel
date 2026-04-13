@@ -15,7 +15,6 @@ If install-time setup was skipped, the runtime scripts may attempt setup automat
 ## What it installs
 
 - `playwright`
-- `backstopjs`
 - `pixelmatch`
 - `pngjs`
 
@@ -39,7 +38,6 @@ Package setup can succeed without it, but Figma API scripts will not work until 
 ## Notes
 
 - `render-page.cjs` expects `playwright` to be installed.
-- `backstop-compare.cjs` expects `backstop` to exist either in the local skill `node_modules/.bin` or globally in PATH.
 - `pixelmatch-runner.cjs` expects `pngjs` and `pixelmatch`.
 - You may override module resolution with:
   - `PLAYWRIGHT_MODULE_PATH`

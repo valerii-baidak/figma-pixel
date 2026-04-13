@@ -116,7 +116,6 @@ If browser lookup is flaky, use `CHROMIUM_PATH` or `PLAYWRIGHT_MODULE_PATH` as e
 Use the available comparison tooling to produce a reliable visual diff.
 Prefer the existing scripted comparison flow.
 Use Playwright render capture and pixelmatch as the primary reliable comparison path.
-If one comparison tool fails but another still works, continue with the best available diff method.
 When available, run the optional Node.js post-processing step after `pixelmatch` to group raw pixel differences into larger mismatch regions.
 
 Always try to produce these artifacts:

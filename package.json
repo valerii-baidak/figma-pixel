@@ -4,7 +4,6 @@
   "type": "commonjs",
   "dependencies": {
     "@techstark/opencv-js": "^4.11.0-release.1",
-    "backstopjs": "^6.3.25",
     "pixelmatch": "^7.1.0",
     "pngjs": "^7.0.0",
     "playwright": "^1.59.1"
