@@ -78,6 +78,8 @@ Token discipline for this skill:
 - Use `scripts/fetch-figma-api.cjs` to fetch file and node data when API access is available.
 - Use Figma API output and Figma screenshots as the visual truth.
 - Prefer the exact requested frame/node over guessing from nearby content.
+- Read visual properties directly from Figma API data whenever available instead of approximating them by eye.
+- Treat Figma fills, strokes, effects, typography, corner radius, bounds, spacing, and image references as authoritative implementation inputs.
 
 Read `references/figma.md` for the expected Figma input layer.
 
@@ -89,9 +91,12 @@ Read `references/figma.md` for the expected Figma input layer.
 - Save the Figma-derived reference image in that run directory.
 - Do not create ad-hoc working folders or scratch assets inside the implementation project for Figma processing, such as `.figma-source`, temporary export caches, or other non-project runtime files. Keep working files in the run directory or shared cache only.
 - Derive viewport width and height from the Figma frame/node bounds, not from hardcoded values.
+- Derive block, card, panel, image, and section width and height from Figma bounds instead of eyeballing proportions.
+- Match section spacing from Figma, including padding, gap, inter-section spacing, and internal content spacing.
 - Treat the exported Figma reference PNG as the exact visual target for comparison. Without the reference image, visual matching is unreliable.
 - Use real Figma-derived screenshots, exports, or crops for visual content. Do not invent placeholder preview images, surrogate mock panels, or decorative stand-ins when the Figma design already shows the real visuals.
 - When the design includes embedded preview panels, screenshots, or UI previews, prefer inserting those real Figma-derived images instead of recreating approximate placeholders.
+- If the Figma node uses image fills or exportable assets, extract and use those assets instead of substituting similar images.
 - Keep the viewport/frame size explicit.
 - Preserve enough metadata to trace the comparison later: URL, node id, size, label.
 
@@ -146,13 +151,19 @@ Prioritize the biggest contributors first:
 - missing repeated footer/meta rows when present in design
 - oversized or undersized preview panels
 - extra bottom whitespace or wrong page ending
+- mismatched colors, corner radius, typography, or imagery
 
 Prefer visible, direct fixes over refactors.
 Do not invent new content if the design already defines it.
 Do not replace real preview visuals with invented placeholders when Figma already provides the real screenshot or crop source.
-Use Figma API data and screenshots to ground spacing, sizing, structure, embedded preview imagery, and color decisions.
+Use Figma API data and screenshots to ground spacing, sizing, structure, embedded preview imagery, color decisions, corner radius, borders, effects, and typography.
 Do not invent page, section, card, or preview colors when the Figma file already defines them. Read and match section backgrounds, text colors, fills, borders, and accents directly from the Figma source.
 Matching colors directly from Figma can materially reduce mismatch and should be preferred over manual palette guessing.
+Read and apply `cornerRadius` or `rectangleCornerRadii` from Figma for cards, buttons, inputs, images, and preview panels instead of defaulting to generic border radius values.
+Match typography from Figma, including font family, font size, font weight, line height, letter spacing, and text alignment.
+Match borders and visible effects from Figma, including stroke width, stroke color, shadow, blur, and opacity when they materially affect the rendered result.
+Use the correct Figma-derived assets for images, thumbnails, screenshots, and fills. If an asset cannot be extracted from Figma, report the blocker clearly instead of silently substituting an incorrect image.
+Prefer exact layout dimensions from Figma bounds over approximate CSS values. Avoid "close enough" sizing when the design provides exact measurements.
 
 ## Step 7, re-run and summarize
 
@@ -184,6 +195,16 @@ When this skill is used, always try to return:
 - top visible mismatches
 - what was changed
 - what failed, if anything
+- whether colors, radius, dimensions, spacing, typography, and images were matched or remain incorrect
+
+Before considering the task done, verify this fidelity checklist:
+- colors match Figma API values
+- corner radius matches Figma
+- dimensions match Figma bounds
+- spacing, padding, and gaps match Figma
+- typography matches Figma
+- correct Figma-derived images or exports are used
+- no invented placeholders remain where Figma provides real assets
 
 ## References
 
