@@ -1,6 +1,6 @@
 ---
 name: figma-pixel
-description: Compare, implement, and adjust webpage or UI layout against a Figma design. Use when the user provides a Figma URL and asks to build, recreate, match, compare, restyle, or tighten implementation to that design, including short prompts like "build this", "make this", "match this", "recreate this", "implement this", or "implement this design".
+description: Compare a webpage or UI layout against a Figma design, then guide the agent to build or fix the implementation. Scripts handle capture, comparison, and reporting; the agent applies layout fixes based on Figma data and diff results. Use when the user provides a Figma URL and asks to build, recreate, match, compare, restyle, or tighten implementation to that design.
 metadata:
   openclaw:
     emoji: 📐
@@ -15,7 +15,12 @@ metadata:
 
 Use this skill when a user shares a Figma link and wants to build a page from that design or bring an existing implementation closer to it.
 Treat Figma as the source of truth.
-Capture the current page, compare it against the design, apply visible layout fixes, and iterate until the result is closer.
+
+This skill has two layers:
+- **Scripts** — automated: parse Figma URLs, fetch API data, export reference images, render pages with Playwright, run pixelmatch/OpenCV comparison, and generate reports.
+- **Agent** — guided: the LLM reads Figma API data and diff reports, then writes or edits HTML/CSS to fix mismatches. Layout fixes are made by the agent, not by the scripts.
+
+The scripts do not auto-patch code. They produce the data and artifacts the agent needs to make accurate, Figma-grounded fixes.
 
 This skill should behave in a production-ready way:
 - require a valid `FIGMA_TOKEN`
@@ -142,6 +147,9 @@ Always try to produce these artifacts:
 
 ## Step 6, make visible layout fixes
 
+This step is performed by the agent, not by the scripts.
+The agent uses Figma API data, reference images, and diff reports from previous steps to decide what to change, then edits the implementation files (HTML, CSS, assets) directly.
+
 Prioritize the biggest contributors first:
 - wrong section backgrounds
 - missing or duplicated structural blocks
@@ -205,6 +213,12 @@ Before considering the task done, verify this fidelity checklist:
 - typography matches Figma
 - correct Figma-derived images or exports are used
 - no invented placeholders remain where Figma provides real assets
+
+## Security
+
+- **FIGMA_TOKEN**: use a token with the minimum scope needed (read-only file access). Rotate the token if you suspect exposure. The skill does not persist the token in artifacts or logs, but verify your environment before sharing run outputs.
+- **Playwright / Chromium**: the render step loads the target page URL in a headless browser. Network requests from the page will be executed. Run in an isolated environment (container, sandbox) if loading untrusted pages.
+- **Artifacts**: screenshots and Figma exports under `figma-pixel-runs/` may contain sensitive UI content. Review and clean these folders before sharing or committing them.
 
 ## References
 
