@@ -35,7 +35,7 @@ Prerequisites:
 Install these packages in the host environment before using the skill:
 
 ```bash
-npm install playwright pixelmatch pngjs @techstark/opencv-js
+npm install playwright pixelmatch pngjs @techstark/opencv-js --save-prod
 npx playwright install chromium
 ```
 

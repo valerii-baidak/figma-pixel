@@ -20,7 +20,7 @@ The runtime reads `FIGMA_TOKEN` only to call the official Figma API for file met
 Install the required packages before using the skill:
 
 ```bash
-npm install playwright pixelmatch pngjs @techstark/opencv-js
+npm install playwright pixelmatch pngjs @techstark/opencv-js --save-prod
 npx playwright install chromium
 ```
 
