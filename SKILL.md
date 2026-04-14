@@ -64,7 +64,7 @@ Read `references/setup.md` for environment expectations.
 4. Open the implementation through the most stable available URL.
 5. Capture the current rendered page.
 6. Compare the implementation against the design.
-7. Make visible layout fixes.
+7. Agent makes visible layout fixes based on Figma data and diff results.
 8. Re-run comparison and summarize the result.
 
 Use `scripts/run-pipeline.cjs` as the primary orchestration entry point.
