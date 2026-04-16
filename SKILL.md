@@ -149,6 +149,8 @@ The spec gives you in one file:
 
 **Use `implementation-spec.json` as the primary reference when building or fixing layout.** Avoid repeated ad-hoc queries against the raw `figma-node.json` — the spec captures everything needed in a single structured pass.
 
+**Always read `warnings[]` before writing any HTML.** Every entry in `warnings[]` is a node with `visible=false` or an invisible fill — do not render these nodes or their content. Rendering invisible nodes is a common source of incorrect content in the implementation.
+
 Read `references/scripts.md` for the exact argument format and output contract.
 
 ## Step 3, build initial implementation (if starting from scratch)
