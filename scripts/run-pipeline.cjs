@@ -7,7 +7,8 @@ const { generateLayoutReport } = require('../lib/layout-report.cjs');
 const { renderPage: renderPageCapture } = require('../lib/page-render.cjs');
 const { runPixelmatch: runPixelmatchDiff } = require('../lib/pixelmatch.cjs');
 const { analyzeDiff } = require('../lib/opencv-diff.cjs');
-const { prepareFigmaState, writeJson } = require('../lib/figma-cache.cjs');
+const { prepareFigmaState, prepareCompareOnlyState, writeJson } = require('../lib/figma-cache.cjs');
+const { extractDesignTokensFromFile } = require('../lib/design-tokens.cjs');
 
 function initRun(projectSlug, runId) {
   const manifest = createRunManifest(projectSlug, runId || '', path.resolve(process.cwd(), 'figma-pixel-runs'));
@@ -33,10 +34,10 @@ function runPixelmatch(referenceImage, screenshotPath, pixelmatchDir) {
   return { diffPath, reportPath, report };
 }
 
-async function runOpenCvAnalysis(referenceImage, screenshotPath, diffPath, pixelmatchDir) {
+async function runOpenCvAnalysis(referenceImage, screenshotPath, diffPath, pixelmatchDir, figmaNodePath) {
   const reportPath = path.join(pixelmatchDir, 'opencv-report.json');
   try {
-    const report = await analyzeDiff(referenceImage, screenshotPath, diffPath, reportPath);
+    const report = await analyzeDiff(referenceImage, screenshotPath, diffPath, reportPath, figmaNodePath);
     if (!fs.existsSync(reportPath) && report) writeJson(reportPath, report);
     return { reportPath, report };
   } catch (error) {
@@ -84,13 +85,17 @@ function runFinalReport(options) {
   });
 }
 
-const figmaUrl = process.argv[2];
-const pageUrl = process.argv[3];
-const projectSlug = process.argv[4] || 'project';
-const runId = process.argv[5];
+const positional = process.argv.slice(2).filter((a) => !a.startsWith('--'));
+const flags = new Set(process.argv.slice(2).filter((a) => a.startsWith('--')));
+const compareOnly = flags.has('--compare-only');
+
+const figmaUrl = positional[0];
+const pageUrl = positional[1];
+const projectSlug = positional[2] || 'project';
+const runId = positional[3];
 
 if (!figmaUrl || !pageUrl) {
-  console.error('Usage: node scripts/run-pipeline.cjs <figma-url> <page-url> [project-slug] [run-id]');
+  console.error('Usage: node scripts/run-pipeline.cjs <figma-url> <page-url> [project-slug] [run-id] [--compare-only]');
   process.exit(1);
 }
 
@@ -102,7 +107,9 @@ async function main() {
   const finalDir = manifest.subdirs.final;
   const sharedFigmaRoot = manifest.sharedDirs?.figma || path.join(manifest.projectDir, 'shared', 'figma');
 
-  const figmaState = await prepareFigmaState(figmaUrl, figmaDir, sharedFigmaRoot);
+  const figmaState = compareOnly
+    ? await prepareCompareOnlyState(figmaUrl, figmaDir, sharedFigmaRoot)
+    : await prepareFigmaState(figmaUrl, figmaDir, sharedFigmaRoot);
   const {
     parsedFigma,
     fetchedFigma,
@@ -117,11 +124,20 @@ async function main() {
   const screenshotPath = path.join(captureDir, 'captured-page.png');
   const renderJson = await renderPage(pageUrl, screenshotPath, viewport, captureDir);
 
+  const figmaNodePath = path.join(figmaDir, 'figma-node.json');
+  const designTokensPath = path.join(figmaDir, 'design-tokens.json');
+  if (fs.existsSync(figmaNodePath) && !fs.existsSync(designTokensPath)) {
+    try {
+      const tokens = extractDesignTokensFromFile(figmaNodePath, parsedFigma.nodeId);
+      writeJson(designTokensPath, tokens);
+    } catch {}
+  }
+
   let pixelmatch = { diffPath: '', reportPath: '', report: null };
   let opencv = { reportPath: '', report: null };
   if (hasReferenceImage) {
     pixelmatch = runPixelmatch(referenceImagePath, screenshotPath, pixelmatchDir);
-    opencv = await runOpenCvAnalysis(referenceImagePath, screenshotPath, pixelmatch.diffPath, pixelmatchDir);
+    opencv = await runOpenCvAnalysis(referenceImagePath, screenshotPath, pixelmatch.diffPath, pixelmatchDir, figmaNodePath);
   }
 
   const top = buildTopMismatches({
@@ -152,8 +168,8 @@ async function main() {
     viewport,
     fallbackUsed: viewport.fallbackUsed,
     artifacts: {
-      figmaFile: path.join(figmaDir, 'figma-file.json'),
       figmaNode: path.join(figmaDir, 'figma-node.json'),
+      designTokens: fs.existsSync(designTokensPath) ? designTokensPath : null,
       parsedFigmaUrl: path.join(figmaDir, 'parsed-figma-url.json'),
       viewport: path.join(figmaDir, 'viewport.json'),
       referenceImage: hasReferenceImage ? referenceImagePath : null,
@@ -162,6 +178,7 @@ async function main() {
       pixelmatchReport: pixelmatch.reportPath || null,
       pixelmatchDiff: pixelmatch.diffPath || null,
       opencvReport: opencv.reportPath || null,
+      annotatedDiff: opencv.report?.annotatedDiff || null,
       finalReport: path.join(finalDir, 'report.json'),
       finalSummary: path.join(finalDir, 'summary.md'),
     },
@@ -181,7 +198,6 @@ async function main() {
   };
 
   writeJson(path.join(manifest.runDir, 'run-result.json'), runResult);
-  writeJson(path.join(manifest.runDir, 'pipeline-summary.json'), runResult);
   console.log(JSON.stringify(runResult, null, 2));
 }
 

@@ -175,6 +175,7 @@ Prioritize the biggest contributors first:
 - mismatched colors, corner radius, typography, or imagery
 
 Prefer visible, direct fixes over refactors.
+Do not implement nodes where `visible === false` in the Figma API — these are hidden layers and must be skipped entirely. Check `visible` on every node before using its content, fills, or dimensions.
 Do not invent new content if the design already defines it.
 Do not replace real preview visuals with invented placeholders when Figma already provides the real screenshot or crop source.
 Use Figma API data and screenshots to ground spacing, sizing, structure, embedded preview imagery, color decisions, corner radius, borders, effects, and typography.
