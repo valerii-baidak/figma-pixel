@@ -11,15 +11,16 @@ Use this skill when:
 
 1. Read Figma source
 2. Fetch or identify the correct reference frame/image
-3. Create a dedicated run folder with `scripts/init-run-dir.cjs`
-4. Choose the most stable serving path for the implementation
-5. Capture the rendered page with Playwright
-6. Run pixelmatch to get diff percentage and diff image
-7. Run OpenCV analysis to get annotated diff and region-to-layer mapping
-8. Apply visible layout fixes
-9. Re-run comparison with `--compare-only` to skip Figma fetch
-10. Report mismatch, artifacts, and blockers
-11. Ask whether to clean up `figma-pixel-runs/<project-slug>/` working files
+3. Check fonts used in the design — ask user to connect them, warn that missing fonts cause inaccurate diffs
+4. Create a dedicated run folder with `scripts/init-run-dir.cjs`
+5. Choose the most stable serving path for the implementation
+6. Capture the rendered page with Playwright
+7. Run pixelmatch to get diff percentage and diff image
+8. Run OpenCV analysis to get annotated diff and region-to-layer mapping
+9. Apply visible layout fixes
+10. Re-run comparison with `--compare-only` to skip Figma fetch
+11. Report mismatch, artifacts, and blockers
+12. Ask whether to clean up `figma-pixel-runs/<project-slug>/` working files
 
 ## Priorities
 

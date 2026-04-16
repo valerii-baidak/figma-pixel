@@ -61,12 +61,13 @@ Read `references/setup.md` for environment expectations.
 
 1. Read the Figma source.
 2. Parse the Figma URL and fetch or reuse Figma data.
-3. Export the Figma reference image.
-4. Open the implementation through the most stable available URL.
-5. Capture the current rendered page.
-6. Compare the implementation against the design.
-7. Agent makes visible layout fixes based on Figma data and diff results.
-8. Re-run comparison and summarize the result.
+3. Check fonts used in the design and ask the user whether to connect them.
+4. Export the Figma reference image.
+5. Open the implementation through the most stable available URL.
+6. Capture the current rendered page.
+7. Compare the implementation against the design.
+8. Agent makes visible layout fixes based on Figma data and diff results.
+9. Re-run comparison and summarize the result.
 
 Use `scripts/run-pipeline.cjs` as the primary orchestration entry point.
 Prefer the pipeline over one-off script combinations unless you are debugging a specific failing stage.
@@ -107,6 +108,25 @@ Read `references/figma.md` for the expected Figma input layer.
 - Preserve enough metadata to trace the comparison later: URL, node id, size, label.
 
 Read `references/artifacts.md` for the expected artifact set.
+
+## Step 2b, check and connect fonts
+
+After fetching Figma data, extract the list of unique font families used in the design.
+Read `fontFamily` values from `figma/design-tokens.json` (typography array) if available, or from `figma-node.json` directly.
+
+Ask the user before proceeding:
+> "This design uses the following fonts: **[Font A, Font B, ...]**. Should I connect them?
+> Without the correct fonts the Playwright screenshot will render fallback fonts and the pixel comparison will be inaccurate."
+
+If the user says **yes**:
+- For each font, add a `<link>` or `@import` for Google Fonts (or the appropriate CDN) to the implementation's HTML or global CSS.
+- Prefer `<link rel="preconnect">` + `<link rel="stylesheet">` in `<head>` for HTML pages.
+- For CSS-only projects, add `@import url(...)` at the top of the main stylesheet.
+- Verify the font loads in the browser before screenshotting (Playwright already waits for `document.fonts.ready`).
+
+If the user says **no**, note that comparison results may be inaccurate due to font fallbacks and continue.
+
+If the fonts are already present in the implementation (referenced in CSS or loaded via a font provider), skip the question and proceed.
 
 ## Step 3, build initial implementation (if starting from scratch)
 
