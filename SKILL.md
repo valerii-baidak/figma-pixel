@@ -67,7 +67,7 @@ Read `references/setup.md` for environment expectations.
 6. Capture the current rendered page.
 7. Compare the implementation against the design.
 8. Agent makes visible layout fixes based on Figma data and diff results.
-9. Re-run comparison and summarize the result.
+9. Re-run comparison and summarize the result. Stop — further iterations only on explicit user request.
 
 Use `scripts/run-pipeline.cjs` as the primary orchestration entry point.
 Prefer the pipeline over one-off script combinations unless you are debugging a specific failing stage.
@@ -250,16 +250,11 @@ If tooling failed but useful artifacts exist, say so plainly and continue with t
 If the page is unreachable, `FIGMA_TOKEN` is missing, or required artifacts cannot be produced, stop and report the blocking reason clearly.
 At the end of the task, ask the user whether they want to clean up working files under `figma-pixel-runs/<project-slug>/` before deleting anything.
 
-## Step 8, ask about the next iteration
+## Step 8, stop after one run
 
-After summarizing results, always ask the user whether to run another iteration.
+After summarizing results, stop. Do not ask whether to run another iteration and do not start one automatically.
 
-Show the current mismatch percentage and the top remaining mismatches, then ask:
-- whether to continue with another round of fixes
-- which specific issues to prioritize in the next pass, or whether to let the agent decide based on the diff
-
-Do not start the next iteration without explicit user confirmation.
-If the user confirms, return to Step 6 and repeat from there.
+If the user explicitly requests another pass (e.g. "run again", "fix more", "next iteration"), return to Step 6 and repeat from there. Otherwise the task is done.
 
 ## Output contract
 
