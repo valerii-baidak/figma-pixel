@@ -20,10 +20,10 @@
  *     rootNodeId,
  *     viewport: { width, height },
  *     sections: [ ... ],       // top-level frames with full annotated tree
- *     texts: [ ... ],          // flat list of all text nodes with style
+ *     texts: [ ... ],          // flat list of all text nodes with style + styledRuns
  *     fonts: [ ... ],          // unique font families
  *     colors: [ ... ],         // unique fill colors sorted by frequency
- *     warnings: [ ... ]        // invisible fills, hidden nodes
+ *     warnings: [ ... ]        // hidden nodes, invisible fills, inline style overrides
  *   }
  *
  * Each node in sections/tree includes:
@@ -31,7 +31,8 @@
  *   fill, stroke, cornerRadius, cornerRadii, opacity,
  *   layout (auto-layout: mode/padding/gap),
  *   effects (shadows/blurs),
- *   characters + style (TEXT nodes only)
+ *   characters + style (TEXT nodes only),
+ *   styledRuns[] (TEXT nodes with inline bold/italic/colour — each run: { start, end, characters, style })
  */
 
 'use strict';
@@ -68,6 +69,7 @@ function main() {
   if (result.ok) {
     const sections = result.sections?.length ?? 0;
     const texts = result.texts?.length ?? 0;
+    const richTextNodes = result.texts?.filter((t) => t.styledRuns?.length).length ?? 0;
     const fonts = result.fonts?.join(', ') || '(none)';
     const warnings = result.warnings?.length ?? 0;
     console.log(JSON.stringify({
@@ -76,6 +78,7 @@ function main() {
       viewport: result.viewport,
       sections,
       texts,
+      richTextNodes,
       fonts,
       warnings,
       topColors: result.colors?.slice(0, 6).map((c) => c.hex),

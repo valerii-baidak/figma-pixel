@@ -47,13 +47,14 @@ node scripts/extract-implementation-data.cjs <figma-node-json> [output-path] [ma
 - `output-path` — where to write `implementation-spec.json` (default: same dir as input)
 - `max-depth` — tree walk depth (default: 6)
 
-**Output (stdout):** `{ ok, outputPath, viewport, sections, texts, fonts, warnings, topColors }`.  
+**Output (stdout):** `{ ok, outputPath, viewport, sections, texts, richTextNodes, fonts, warnings, topColors }`.  
 **Files written:** `implementation-spec.json` — full annotated tree with:
 - `sections[]` — top-level frames with `bounds` (relative to root 0,0), `fill`, `stroke`, `cornerRadius`, `layout` (auto-layout), `effects`
-- `texts[]` — flat list of every text node with `characters`, `style` (fontFamily, fontSize, fontWeight, lineHeightPx, color)
+- `texts[]` — flat list of every text node with `characters`, `style`, and (when present) `styledRuns[]`
+  - `styledRuns[]` — present when the node contains inline style overrides (e.g. a bold phrase inside a regular paragraph). Each run: `{ start, end, characters, style }` where `style` is the fully merged style for that span. Use these to emit `<strong>`, `<em>`, or `<span>` elements — do not ignore them.
 - `fonts[]` — unique font families
 - `colors[]` — unique fill colors sorted by frequency
-- `warnings[]` — invisible fills, hidden nodes (`visible=false`)
+- `warnings[]` — hidden nodes (`visible=false`), invisible fills, TEXT nodes with inline style overrides
 
 **When to use:** run this right after `fetch-figma-api.cjs`, before writing any HTML/CSS.  
 It replaces ad-hoc `python3 -c` queries against the raw JSON.

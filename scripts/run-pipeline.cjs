@@ -59,6 +59,40 @@ async function runOpenCvAnalysis(referenceImage, screenshotPath, diffPath, pixel
   }
 }
 
+/**
+ * Annotate each tile in a tile report with the section it falls in.
+ * Reads sections[] from the implementation spec (if available).
+ * Adds `sectionName` and `sectionRelativeY` to every tile entry.
+ */
+function annotateTilesWithSections(tileReport, implSpecPath) {
+  if (!tileReport?.tiles?.length) return tileReport;
+  let sections = [];
+  try {
+    if (fs.existsSync(implSpecPath)) {
+      const spec = JSON.parse(fs.readFileSync(implSpecPath, 'utf8'));
+      sections = (spec.sections || []).map((s) => ({
+        name: s.name,
+        y: s.bounds?.y ?? 0,
+        height: s.bounds?.height ?? 0,
+      }));
+    }
+  } catch {}
+  if (!sections.length) return tileReport;
+
+  function sectionForY(y) {
+    for (const sec of sections) {
+      if (y >= sec.y && y < sec.y + sec.height) {
+        return { sectionName: sec.name, sectionRelativeY: y - sec.y };
+      }
+    }
+    return {};
+  }
+
+  const annotatedTiles = tileReport.tiles.map((t) => ({ ...t, ...sectionForY(t.y) }));
+  const annotatedTop = (tileReport.topMismatchTiles || []).map((t) => ({ ...t, ...sectionForY(t.y) }));
+  return { ...tileReport, tiles: annotatedTiles, topMismatchTiles: annotatedTop };
+}
+
 function buildTopMismatches({ hasReferenceImage, viewport, renderJson, exportJson, pixelmatchReport, opencvReport, tileCompare }) {
   const top = [];
   if (!hasReferenceImage) top.push('reference image missing: figma/reference-image.png');
@@ -191,6 +225,8 @@ async function main() {
     // Tile comparison: 300px horizontal bands → ranked mismatch zones
     try {
       tileReport = compareTiles(referenceImagePath, screenshotPath, { tileHeight: 300 });
+      // Annotate tiles with section names from the implementation spec
+      tileReport = annotateTilesWithSections(tileReport, implSpecPath);
       writeJson(path.join(pixelmatchDir, 'tile-report.json'), tileReport);
     } catch {}
   }

@@ -144,14 +144,16 @@ When using `run-pipeline.cjs`, this file is generated automatically — check `a
 The spec gives you in one file:
 - `viewport` — exact frame dimensions (width × height)
 - `sections[]` — full annotated node tree with `bounds` (relative to root 0,0), `fill`, `stroke`, `cornerRadius`, `layout` (auto-layout mode/padding/gap), `effects`
-- `texts[]` — flat list of every text node with `characters` and `style` (fontFamily, fontSize, fontWeight, lineHeightPx, color)
+- `texts[]` — flat list of every text node with `characters`, `style`, and (when present) `styledRuns[]`
 - `fonts[]` — unique font families used
 - `colors[]` — all fill colors sorted by frequency, as `{ hex, count }`
-- `warnings[]` — nodes with `visible=false` (do not render these) and invisible fills (skip those fills)
+- `warnings[]` — nodes with `visible=false`, invisible fills, and TEXT nodes with inline style overrides
 
 **Use `implementation-spec.json` as the primary reference when building or fixing layout.** Avoid repeated ad-hoc queries against the raw `figma-node.json` — the spec captures everything needed in a single structured pass.
 
-**Read `warnings[]` immediately — before writing a single line of HTML or CSS.** Every entry is a node with `visible=false` or an invisible fill. Rendering invisible nodes is one of the most common sources of wrong content in implementations. Do not skip this check.
+**Read `warnings[]` immediately — before writing a single line of HTML or CSS.** Every entry is either a hidden node, an invisible fill, or a TEXT node that contains inline style overrides. Do not skip this check.
+
+**Check `styledRuns[]` on every TEXT entry before writing markup.** When a `texts[]` entry has `styledRuns`, the text contains mixed styling — bold spans, colour changes, or font-weight overrides. Render each run using the appropriate inline element (`<strong>`, `<em>`, or `<span>`) with styles derived from `styledRuns[].style`. Ignoring `styledRuns` produces flat-weight text that causes layout reflow and pixel mismatches. Each run: `{ start, end, characters, style }` where `style` is already the merged result of the base style and the Figma override.
 
 Read `references/scripts.md` for the exact argument format and output contract.
 
@@ -207,6 +209,8 @@ Always try to produce these artifacts:
 
 `run-pipeline.cjs` also runs a tile comparison automatically (300px horizontal bands) and writes `pixelmatch/tile-report.json`. Read `tileCompare.topMismatchTiles` from the run result to know which vertical zones to prioritize before making fixes. OpenCV then runs **per tile** on the top 3 highest-mismatch bands (not on the full image), so it works correctly for full-page designs of any height without WASM memory issues. Each reported region includes `tileY` (the tile's absolute Y offset) and `y` (absolute Y coordinate in the full image).
 
+Each tile entry now also includes `sectionName` and `sectionRelativeY` when section data is available from the implementation spec — use these to immediately know which section to inspect without manually dividing `y` by section height.
+
 After each run, `run-result.json` is written to the run directory as soon as pixelmatch and tile comparison finish — before OpenCV. Read it first: it contains `mismatch` (diffPercent), `delta` (change vs previous run), `tileCompare.topMismatchTiles`, and `artifacts` paths. If the pipeline crashes after tile comparison, `run-result.json` still exists with the essential data.
 
 ## Step 6, make visible layout fixes
@@ -214,7 +218,7 @@ After each run, `run-result.json` is written to the run directory as soon as pix
 This step is performed by the agent, not by the scripts.
 The agent uses Figma API data, reference images, and diff reports from previous steps to decide what to change, then edits the implementation files (HTML, CSS, assets) directly.
 
-Before making fixes, read `tileCompare.topMismatchTiles` from `run-result.json` to identify the highest-mismatch vertical zones (by `y` coordinate). Fix those zones first, then move to lower-mismatch areas.
+Before making fixes, read `tileCompare.topMismatchTiles` from `run-result.json` to identify the highest-mismatch vertical zones. Each tile includes `y` (absolute pixel offset), `sectionName`, and `sectionRelativeY`. Fix the highest-mismatch sections first, then move to lower-mismatch areas.
 
 Prioritize the biggest contributors first:
 - wrong section backgrounds
@@ -246,7 +250,7 @@ After each pass, read `run-result.json` first — it is the single compact sourc
 - `mismatch` — diffPercent for this run
 - `delta` — change vs the previous run (negative = improvement)
 - `previousRun` — `{ runId, diffPercent }` of the run before this one
-- `tileCompare.topMismatchTiles` — ranked zones to fix next
+- `tileCompare.topMismatchTiles` — ranked zones to fix next, each with `sectionName` and `sectionRelativeY`
 - `artifacts.*` — paths to all generated files
 
 Summarize:
