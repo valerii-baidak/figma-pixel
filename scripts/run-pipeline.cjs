@@ -12,6 +12,10 @@ const { prepareFigmaState, prepareCompareOnlyState, writeJson } = require('../li
 const { extractDesignTokensFromFile } = require('../lib/design-tokens.cjs');
 const { extractFromFile: extractImplementationData } = require('../lib/implementation-extractor.cjs');
 
+// OpenCV crashes Node with WASM OOM for images larger than ~10M pixels.
+// Skip it when the image area exceeds this threshold (5M pixels ≈ 1600×3125).
+const OPENCV_MAX_PIXELS = 5_000_000;
+
 function initRun(projectSlug, runId) {
   const manifest = createRunManifest(projectSlug, runId || '', path.resolve(process.cwd(), 'figma-pixel-runs'));
   if (!manifest?.runDir || !manifest?.subdirs) {
@@ -20,7 +24,6 @@ function initRun(projectSlug, runId) {
   }
   return manifest;
 }
-
 
 async function renderPage(pageUrl, screenshotPath, viewport, captureDir) {
   const renderJson = await renderPageCapture(pageUrl, screenshotPath, viewport.width, viewport.height);
@@ -36,8 +39,22 @@ function runPixelmatch(referenceImage, screenshotPath, pixelmatchDir) {
   return { diffPath, reportPath, report };
 }
 
-async function runOpenCvAnalysis(referenceImage, screenshotPath, diffPath, pixelmatchDir, figmaNodePath) {
+async function runOpenCvAnalysis(referenceImage, screenshotPath, diffPath, pixelmatchDir, figmaNodePath, viewport) {
   const reportPath = path.join(pixelmatchDir, 'opencv-report.json');
+
+  // Guard: skip OpenCV for very large images to avoid WASM OOM crash
+  const pixels = (viewport?.width || 0) * (viewport?.height || 0);
+  if (pixels > OPENCV_MAX_PIXELS) {
+    const report = {
+      ok: false,
+      skipped: true,
+      reason: `image too large for OpenCV (${viewport.width}×${viewport.height} = ${pixels} px > ${OPENCV_MAX_PIXELS} limit)`,
+      reportPath,
+    };
+    writeJson(reportPath, report);
+    return { reportPath, report };
+  }
+
   try {
     const report = await analyzeDiff(referenceImage, screenshotPath, diffPath, reportPath, figmaNodePath);
     if (!fs.existsSync(reportPath) && report) writeJson(reportPath, report);
@@ -92,6 +109,23 @@ function runFinalReport(options) {
   });
 }
 
+/** Read the previous run's mismatch% from the project's run dirs (sorted by name). */
+function readPreviousMismatch(projectDir, currentRunId) {
+  try {
+    const entries = fs.readdirSync(projectDir)
+      .filter((e) => e !== 'shared' && e !== currentRunId)
+      .sort();
+    if (!entries.length) return null;
+    const prev = entries[entries.length - 1];
+    const reportPath = path.join(projectDir, prev, 'pixelmatch', 'report.json');
+    if (!fs.existsSync(reportPath)) return null;
+    const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
+    return { runId: prev, diffPercent: report.diffPercent ?? null };
+  } catch {
+    return null;
+  }
+}
+
 const positional = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 const flags = new Set(process.argv.slice(2).filter((a) => a.startsWith('--')));
 const compareOnly = flags.has('--compare-only');
@@ -134,6 +168,7 @@ async function main() {
   const figmaNodePath = path.join(figmaDir, 'figma-node.json');
   const designTokensPath = path.join(figmaDir, 'design-tokens.json');
   const implSpecPath = path.join(figmaDir, 'implementation-spec.json');
+  const sharedImplSpecPath = path.join(sharedPaths.cacheDir, 'implementation-spec.json');
 
   if (fs.existsSync(figmaNodePath)) {
     // design tokens (legacy)
@@ -143,18 +178,24 @@ async function main() {
         writeJson(designTokensPath, tokens);
       } catch {}
     }
-    // implementation spec (spec-first: full annotated tree for the build agent)
+    // implementation spec — use shared cache so it isn't regenerated every run
     if (!fs.existsSync(implSpecPath)) {
-      try {
-        const spec = extractImplementationData(figmaNodePath, parsedFigma.nodeId);
-        writeJson(implSpecPath, spec);
-      } catch {}
+      if (fs.existsSync(sharedImplSpecPath)) {
+        fs.copyFileSync(sharedImplSpecPath, implSpecPath);
+      } else {
+        try {
+          const spec = extractImplementationData(figmaNodePath, parsedFigma.nodeId);
+          writeJson(implSpecPath, spec);
+          // persist to shared so subsequent runs reuse it
+          writeJson(sharedImplSpecPath, spec);
+        } catch {}
+      }
     }
   }
 
   let pixelmatch = { diffPath: '', reportPath: '', report: null };
-  let opencv = { reportPath: '', report: null };
   let tileReport = null;
+
   if (hasReferenceImage) {
     pixelmatch = runPixelmatch(referenceImagePath, screenshotPath, pixelmatchDir);
 
@@ -163,13 +204,69 @@ async function main() {
       tileReport = compareTiles(referenceImagePath, screenshotPath, { tileHeight: 300 });
       writeJson(path.join(pixelmatchDir, 'tile-report.json'), tileReport);
     } catch {}
-
-    // OpenCV only for tiles that have mismatches
-    if (tileReport?.topMismatchTiles?.length || !tileReport) {
-      opencv = await runOpenCvAnalysis(referenceImagePath, screenshotPath, pixelmatch.diffPath, pixelmatchDir, figmaNodePath);
-    }
   }
 
+  // ── Write run-result.json early (after pixelmatch, before OpenCV) ──────────
+  // This ensures the agent always gets a usable result even if OpenCV crashes.
+  const previousRun = readPreviousMismatch(manifest.projectDir, manifest.runId);
+  const currentMismatch = pixelmatch.report?.diffPercent ?? null;
+  const delta = (previousRun?.diffPercent != null && currentMismatch != null)
+    ? +(currentMismatch - previousRun.diffPercent).toFixed(2)
+    : null;
+
+  const earlyResult = {
+    ok: true,
+    runDir: manifest.runDir,
+    manifestPath: path.join(manifest.runDir, 'run-manifest.json'),
+    viewport,
+    fallbackUsed: viewport.fallbackUsed,
+    mismatch: currentMismatch,
+    delta: delta,
+    previousRun: previousRun ?? null,
+    artifacts: {
+      figmaNode: path.join(figmaDir, 'figma-node.json'),
+      implementationSpec: fs.existsSync(implSpecPath) ? implSpecPath : null,
+      designTokens: fs.existsSync(designTokensPath) ? designTokensPath : null,
+      parsedFigmaUrl: path.join(figmaDir, 'parsed-figma-url.json'),
+      viewport: path.join(figmaDir, 'viewport.json'),
+      referenceImage: hasReferenceImage ? referenceImagePath : null,
+      renderScreenshot: screenshotPath,
+      renderReport: path.join(captureDir, 'render-result.json'),
+      pixelmatchReport: pixelmatch.reportPath || null,
+      pixelmatchDiff: pixelmatch.diffPath || null,
+      tileReport: tileReport ? path.join(pixelmatchDir, 'tile-report.json') : null,
+      opencvReport: null,
+      annotatedDiff: null,
+      finalReport: path.join(finalDir, 'report.json'),
+      finalSummary: path.join(finalDir, 'summary.md'),
+    },
+    parsedFigma,
+    fetchedFigma,
+    exportImage: exportJson,
+    exportAttempts,
+    sharedFigmaCache: {
+      root: sharedFigmaRoot,
+      key: sharedPaths.key,
+      cacheDir: sharedPaths.cacheDir,
+    },
+    render: renderJson,
+    pixelmatch: pixelmatch.report,
+    tileCompare: tileReport,
+    opencv: null,
+    final: null,
+  };
+  writeJson(path.join(manifest.runDir, 'run-result.json'), earlyResult);
+
+  // ── OpenCV (optional, may be skipped for large images) ────────────────────
+  let opencv = { reportPath: '', report: null };
+  if (hasReferenceImage && (tileReport?.topMismatchTiles?.length || !tileReport)) {
+    opencv = await runOpenCvAnalysis(
+      referenceImagePath, screenshotPath, pixelmatch.diffPath,
+      pixelmatchDir, figmaNodePath, viewport
+    );
+  }
+
+  // ── Final report ──────────────────────────────────────────────────────────
   const top = buildTopMismatches({
     hasReferenceImage,
     viewport,
@@ -192,45 +289,17 @@ async function main() {
     top,
   });
 
+  // ── Overwrite run-result.json with complete data ───────────────────────────
   const runResult = {
-    ok: true,
-    runDir: manifest.runDir,
-    manifestPath: path.join(manifest.runDir, 'run-manifest.json'),
-    viewport,
-    fallbackUsed: viewport.fallbackUsed,
+    ...earlyResult,
     artifacts: {
-      figmaNode: path.join(figmaDir, 'figma-node.json'),
-      implementationSpec: fs.existsSync(implSpecPath) ? implSpecPath : null,
-      designTokens: fs.existsSync(designTokensPath) ? designTokensPath : null,
-      parsedFigmaUrl: path.join(figmaDir, 'parsed-figma-url.json'),
-      viewport: path.join(figmaDir, 'viewport.json'),
-      referenceImage: hasReferenceImage ? referenceImagePath : null,
-      renderScreenshot: screenshotPath,
-      renderReport: path.join(captureDir, 'render-result.json'),
-      pixelmatchReport: pixelmatch.reportPath || null,
-      pixelmatchDiff: pixelmatch.diffPath || null,
-      tileReport: tileReport ? path.join(pixelmatchDir, 'tile-report.json') : null,
+      ...earlyResult.artifacts,
       opencvReport: opencv.reportPath || null,
       annotatedDiff: opencv.report?.annotatedDiff || null,
-      finalReport: path.join(finalDir, 'report.json'),
-      finalSummary: path.join(finalDir, 'summary.md'),
     },
-    parsedFigma,
-    fetchedFigma,
-    exportImage: exportJson,
-    exportAttempts,
-    sharedFigmaCache: {
-      root: sharedFigmaRoot,
-      key: sharedPaths.key,
-      cacheDir: sharedPaths.cacheDir,
-    },
-    render: renderJson,
-    pixelmatch: pixelmatch.report,
-    tileCompare: tileReport,
     opencv,
     final,
   };
-
   writeJson(path.join(manifest.runDir, 'run-result.json'), runResult);
   console.log(JSON.stringify(runResult, null, 2));
 }
