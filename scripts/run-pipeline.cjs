@@ -7,6 +7,7 @@ const { generateLayoutReport } = require('../lib/layout-report.cjs');
 const { renderPage: renderPageCapture } = require('../lib/page-render.cjs');
 const { runPixelmatch: runPixelmatchDiff } = require('../lib/pixelmatch.cjs');
 const { analyzeDiff } = require('../lib/opencv-diff.cjs');
+const { compareTiles } = require('../lib/tile-compare.cjs');
 const { prepareFigmaState, prepareCompareOnlyState, writeJson } = require('../lib/figma-cache.cjs');
 const { extractDesignTokensFromFile } = require('../lib/design-tokens.cjs');
 const { extractFromFile: extractImplementationData } = require('../lib/implementation-extractor.cjs');
@@ -52,13 +53,18 @@ async function runOpenCvAnalysis(referenceImage, screenshotPath, diffPath, pixel
   }
 }
 
-function buildTopMismatches({ hasReferenceImage, viewport, renderJson, exportJson, pixelmatchReport, opencvReport }) {
+function buildTopMismatches({ hasReferenceImage, viewport, renderJson, exportJson, pixelmatchReport, opencvReport, tileCompare }) {
   const top = [];
   if (!hasReferenceImage) top.push('reference image missing: figma/reference-image.png');
   if (exportJson && exportJson.ok === false) top.push('figma image export failed');
   if (viewport.fallbackUsed) top.push('viewport fallback used: no usable Figma node bounds');
   if (renderJson.failedRequests?.length) top.push(`failed requests: ${renderJson.failedRequests.length}`);
   if (renderJson.badResponses?.length) top.push(`bad responses: ${renderJson.badResponses.length}`);
+  if (tileCompare?.topMismatchTiles?.length) {
+    for (const t of tileCompare.topMismatchTiles.slice(0, 3)) {
+      top.push(`tile y=${t.y}–${t.y + t.height}px: ${t.diffPercent}% mismatch`);
+    }
+  }
   if (opencvReport?.ok && Array.isArray(opencvReport.summary)) {
     top.push(...opencvReport.summary.slice(0, 5));
   }
@@ -148,9 +154,20 @@ async function main() {
 
   let pixelmatch = { diffPath: '', reportPath: '', report: null };
   let opencv = { reportPath: '', report: null };
+  let tileReport = null;
   if (hasReferenceImage) {
     pixelmatch = runPixelmatch(referenceImagePath, screenshotPath, pixelmatchDir);
-    opencv = await runOpenCvAnalysis(referenceImagePath, screenshotPath, pixelmatch.diffPath, pixelmatchDir, figmaNodePath);
+
+    // Tile comparison: 300px horizontal bands → ranked mismatch zones
+    try {
+      tileReport = compareTiles(referenceImagePath, screenshotPath, { tileHeight: 300 });
+      writeJson(path.join(pixelmatchDir, 'tile-report.json'), tileReport);
+    } catch {}
+
+    // OpenCV only for tiles that have mismatches
+    if (tileReport?.topMismatchTiles?.length || !tileReport) {
+      opencv = await runOpenCvAnalysis(referenceImagePath, screenshotPath, pixelmatch.diffPath, pixelmatchDir, figmaNodePath);
+    }
   }
 
   const top = buildTopMismatches({
@@ -160,6 +177,7 @@ async function main() {
     exportJson,
     pixelmatchReport: pixelmatch.report,
     opencvReport: opencv.report,
+    tileCompare: tileReport,
   });
   const final = runFinalReport({
     outputDir: finalDir,
@@ -191,6 +209,7 @@ async function main() {
       renderReport: path.join(captureDir, 'render-result.json'),
       pixelmatchReport: pixelmatch.reportPath || null,
       pixelmatchDiff: pixelmatch.diffPath || null,
+      tileReport: tileReport ? path.join(pixelmatchDir, 'tile-report.json') : null,
       opencvReport: opencv.reportPath || null,
       annotatedDiff: opencv.report?.annotatedDiff || null,
       finalReport: path.join(finalDir, 'report.json'),
@@ -207,6 +226,7 @@ async function main() {
     },
     render: renderJson,
     pixelmatch: pixelmatch.report,
+    tileCompare: tileReport,
     opencv,
     final,
   };

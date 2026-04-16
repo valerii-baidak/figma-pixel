@@ -203,10 +203,14 @@ Always try to produce these artifacts:
 - mismatch percentage
 - machine-readable report
 
+`run-pipeline.cjs` also runs a tile comparison automatically (300px horizontal bands) and writes `pixelmatch/tile-report.json`. Read `tileCompare.topMismatchTiles` from the run result to know which vertical zones to prioritize before making fixes. For each tile with `diffPercent > 0`, OpenCV analysis is run on the full diff to get region-to-layer mapping.
+
 ## Step 6, make visible layout fixes
 
 This step is performed by the agent, not by the scripts.
 The agent uses Figma API data, reference images, and diff reports from previous steps to decide what to change, then edits the implementation files (HTML, CSS, assets) directly.
+
+Before making fixes, read `tileCompare.topMismatchTiles` from `run-result.json` to identify the highest-mismatch vertical zones (by `y` coordinate). Fix those zones first, then move to lower-mismatch areas.
 
 Prioritize the biggest contributors first:
 - wrong section backgrounds

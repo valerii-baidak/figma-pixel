@@ -113,6 +113,23 @@ node scripts/pixelmatch-runner.cjs <reference-png> <screenshot-png> <diff-output
 
 ---
 
+## `tile-compare.cjs`
+
+```
+node scripts/tile-compare.cjs <reference-png> <screenshot-png> [output-json] [tile-height]
+```
+
+**Input:** reference PNG, screenshot PNG, optional output path, optional tile height (default: 300).  
+**Output (stdout):** `{ ok, width, height, tileHeight, tileCount, tiles[], topMismatchTiles[] }`.  
+**Files written:** `tile-report.json` at the output path if provided.
+
+**`tiles[]` fields:** `{ tileIndex, y, height, diffPixels, diffPercent }` — one entry per 300px band.  
+**`topMismatchTiles[]`:** top 5 tiles sorted by `diffPercent` descending.
+
+**Notes:** use `topMismatchTiles[].y` to locate which vertical zone needs the most attention before running OpenCV or making fixes. `run-pipeline.cjs` runs this automatically and writes `pixelmatch/tile-report.json`.
+
+---
+
 ## `opencv-analyze-diff.cjs`
 
 ```

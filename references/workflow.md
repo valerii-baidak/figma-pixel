@@ -16,11 +16,12 @@ Use this skill when:
 5. Choose the most stable serving path for the implementation
 6. Capture the rendered page with Playwright
 7. Run pixelmatch to get diff percentage and diff image
-8. Run OpenCV analysis to get annotated diff and region-to-layer mapping
-9. Apply visible layout fixes
-10. Re-run comparison with `--compare-only` to skip Figma fetch
-11. Report mismatch, artifacts, and blockers
-12. Ask whether to clean up `figma-pixel-runs/<project-slug>/` working files
+8. Run tile comparison (300px bands) — read `topMismatchTiles` to locate the worst vertical zones
+9. Run OpenCV analysis on tiles with mismatches to get annotated diff and region-to-layer mapping
+10. Apply visible layout fixes
+11. Re-run comparison with `--compare-only` to skip Figma fetch
+12. Report mismatch, artifacts, and blockers
+13. Ask whether to clean up `figma-pixel-runs/<project-slug>/` working files
 
 ## Priorities
 
