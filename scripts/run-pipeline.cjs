@@ -9,6 +9,7 @@ const { runPixelmatch: runPixelmatchDiff } = require('../lib/pixelmatch.cjs');
 const { analyzeDiff } = require('../lib/opencv-diff.cjs');
 const { prepareFigmaState, prepareCompareOnlyState, writeJson } = require('../lib/figma-cache.cjs');
 const { extractDesignTokensFromFile } = require('../lib/design-tokens.cjs');
+const { extractFromFile: extractImplementationData } = require('../lib/implementation-extractor.cjs');
 
 function initRun(projectSlug, runId) {
   const manifest = createRunManifest(projectSlug, runId || '', path.resolve(process.cwd(), 'figma-pixel-runs'));
@@ -126,11 +127,23 @@ async function main() {
 
   const figmaNodePath = path.join(figmaDir, 'figma-node.json');
   const designTokensPath = path.join(figmaDir, 'design-tokens.json');
-  if (fs.existsSync(figmaNodePath) && !fs.existsSync(designTokensPath)) {
-    try {
-      const tokens = extractDesignTokensFromFile(figmaNodePath, parsedFigma.nodeId);
-      writeJson(designTokensPath, tokens);
-    } catch {}
+  const implSpecPath = path.join(figmaDir, 'implementation-spec.json');
+
+  if (fs.existsSync(figmaNodePath)) {
+    // design tokens (legacy)
+    if (!fs.existsSync(designTokensPath)) {
+      try {
+        const tokens = extractDesignTokensFromFile(figmaNodePath, parsedFigma.nodeId);
+        writeJson(designTokensPath, tokens);
+      } catch {}
+    }
+    // implementation spec (spec-first: full annotated tree for the build agent)
+    if (!fs.existsSync(implSpecPath)) {
+      try {
+        const spec = extractImplementationData(figmaNodePath, parsedFigma.nodeId);
+        writeJson(implSpecPath, spec);
+      } catch {}
+    }
   }
 
   let pixelmatch = { diffPath: '', reportPath: '', report: null };
@@ -169,6 +182,7 @@ async function main() {
     fallbackUsed: viewport.fallbackUsed,
     artifacts: {
       figmaNode: path.join(figmaDir, 'figma-node.json'),
+      implementationSpec: fs.existsSync(implSpecPath) ? implSpecPath : null,
       designTokens: fs.existsSync(designTokensPath) ? designTokensPath : null,
       parsedFigmaUrl: path.join(figmaDir, 'parsed-figma-url.json'),
       viewport: path.join(figmaDir, 'viewport.json'),

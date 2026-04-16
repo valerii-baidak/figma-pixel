@@ -128,12 +128,35 @@ If the user says **no**, note that comparison results may be inaccurate due to f
 
 If the fonts are already present in the implementation (referenced in CSS or loaded via a font provider), skip the question and proceed.
 
+## Step 2c, extract implementation spec (spec-first)
+
+After fetching Figma data and before writing any HTML/CSS, run:
+
+```bash
+node scripts/extract-implementation-data.cjs <path-to-figma-node.json>
+```
+
+This produces `implementation-spec.json` in the same directory as `figma-node.json`.
+When using `run-pipeline.cjs`, this file is generated automatically — check `artifacts.implementationSpec` in the run result.
+
+The spec gives you in one file:
+- `viewport` — exact frame dimensions (width × height)
+- `sections[]` — full annotated node tree with `bounds` (relative to root 0,0), `fill`, `stroke`, `cornerRadius`, `layout` (auto-layout mode/padding/gap), `effects`
+- `texts[]` — flat list of every text node with `characters` and `style` (fontFamily, fontSize, fontWeight, lineHeightPx, color)
+- `fonts[]` — unique font families used
+- `colors[]` — all fill colors sorted by frequency, as `{ hex, count }`
+- `warnings[]` — nodes with `visible=false` (do not render these) and invisible fills (skip those fills)
+
+**Use `implementation-spec.json` as the primary reference when building or fixing layout.** Avoid repeated ad-hoc queries against the raw `figma-node.json` — the spec captures everything needed in a single structured pass.
+
+Read `references/scripts.md` for the exact argument format and output contract.
+
 ## Step 3, build initial implementation (if starting from scratch)
 
 Skip this step if an implementation already exists — go directly to Step 4.
 
 If no implementation exists yet:
-- Read Figma frame bounds, layout structure, colors, typography, spacing, and component hierarchy from the API data.
+- Read `implementation-spec.json` (from Step 2c) for frame bounds, layout structure, colors, typography, spacing, and component hierarchy.
 - Detect the project type from context: check for `package.json`, framework config files (`next.config.*`, `vite.config.*`, `nuxt.config.*`, etc.), or ask the user if unclear.
 - Create the implementation using the conventions of the detected stack — follow its standard file and component conventions, and match the styling approach already used in the project.
 - Use Figma-derived values for all properties — do not invent defaults.
@@ -270,3 +293,4 @@ Before considering the task done, verify this fidelity checklist:
 - Read `references/figma.md` for the Figma input layer.
 - Read `references/workflow.md` for a concise execution checklist.
 - Read `references/artifacts.md` for the run directory contract and expected artifact outputs.
+- Read `references/scripts.md` for the exact CLI usage of every script, including `extract-implementation-data.cjs`.
