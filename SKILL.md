@@ -205,7 +205,7 @@ Always try to produce these artifacts:
 - mismatch percentage
 - machine-readable report
 
-`run-pipeline.cjs` also runs a tile comparison automatically (300px horizontal bands) and writes `pixelmatch/tile-report.json`. Read `tileCompare.topMismatchTiles` from the run result to know which vertical zones to prioritize before making fixes. For each tile with `diffPercent > 0`, OpenCV analysis is run on the diff to get region-to-layer mapping — **OpenCV is skipped automatically for images larger than 5 M pixels** (e.g. full-page designs taller than ~3000 px) to avoid a WASM memory crash; tile data is still available in those cases.
+`run-pipeline.cjs` also runs a tile comparison automatically (300px horizontal bands) and writes `pixelmatch/tile-report.json`. Read `tileCompare.topMismatchTiles` from the run result to know which vertical zones to prioritize before making fixes. OpenCV then runs **per tile** on the top 3 highest-mismatch bands (not on the full image), so it works correctly for full-page designs of any height without WASM memory issues. Each reported region includes `tileY` (the tile's absolute Y offset) and `y` (absolute Y coordinate in the full image).
 
 After each run, `run-result.json` is written to the run directory as soon as pixelmatch and tile comparison finish — before OpenCV. Read it first: it contains `mismatch` (diffPercent), `delta` (change vs previous run), `tileCompare.topMismatchTiles`, and `artifacts` paths. If the pipeline crashes after tile comparison, `run-result.json` still exists with the essential data.
 

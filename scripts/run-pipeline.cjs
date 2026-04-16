@@ -6,15 +6,11 @@ const { createRunManifest } = require('../lib/run-manifest.cjs');
 const { generateLayoutReport } = require('../lib/layout-report.cjs');
 const { renderPage: renderPageCapture } = require('../lib/page-render.cjs');
 const { runPixelmatch: runPixelmatchDiff } = require('../lib/pixelmatch.cjs');
-const { analyzeDiff } = require('../lib/opencv-diff.cjs');
+const { analyzeDiffTiles } = require('../lib/opencv-diff.cjs');
 const { compareTiles } = require('../lib/tile-compare.cjs');
 const { prepareFigmaState, prepareCompareOnlyState, writeJson } = require('../lib/figma-cache.cjs');
 const { extractDesignTokensFromFile } = require('../lib/design-tokens.cjs');
 const { extractFromFile: extractImplementationData } = require('../lib/implementation-extractor.cjs');
-
-// OpenCV crashes Node with WASM OOM for images larger than ~10M pixels.
-// Skip it when the image area exceeds this threshold (5M pixels ≈ 1600×3125).
-const OPENCV_MAX_PIXELS = 5_000_000;
 
 function initRun(projectSlug, runId) {
   const manifest = createRunManifest(projectSlug, runId || '', path.resolve(process.cwd(), 'figma-pixel-runs'));
@@ -39,30 +35,23 @@ function runPixelmatch(referenceImage, screenshotPath, pixelmatchDir) {
   return { diffPath, reportPath, report };
 }
 
-async function runOpenCvAnalysis(referenceImage, screenshotPath, diffPath, pixelmatchDir, figmaNodePath, viewport) {
+async function runOpenCvAnalysis(referenceImage, screenshotPath, diffPath, pixelmatchDir, figmaNodePath, tiles) {
   const reportPath = path.join(pixelmatchDir, 'opencv-report.json');
 
-  // Guard: skip OpenCV for very large images to avoid WASM OOM crash
-  const pixels = (viewport?.width || 0) * (viewport?.height || 0);
-  if (pixels > OPENCV_MAX_PIXELS) {
-    const report = {
-      ok: false,
-      skipped: true,
-      reason: `image too large for OpenCV (${viewport.width}×${viewport.height} = ${pixels} px > ${OPENCV_MAX_PIXELS} limit)`,
-      reportPath,
-    };
+  if (!tiles || !tiles.length) {
+    const report = { ok: false, skipped: true, reason: 'no mismatch tiles to analyze', reportPath };
     writeJson(reportPath, report);
     return { reportPath, report };
   }
 
   try {
-    const report = await analyzeDiff(referenceImage, screenshotPath, diffPath, reportPath, figmaNodePath);
+    const report = await analyzeDiffTiles(referenceImage, screenshotPath, diffPath, reportPath, figmaNodePath, tiles);
     if (!fs.existsSync(reportPath) && report) writeJson(reportPath, report);
     return { reportPath, report };
   } catch (error) {
     const report = {
       ok: false,
-      error: error?.message || 'Node diff region analysis failed',
+      error: error?.message || 'Tile-based diff region analysis failed',
       reportPath,
     };
     if (!fs.existsSync(reportPath)) writeJson(reportPath, report);
@@ -257,12 +246,13 @@ async function main() {
   };
   writeJson(path.join(manifest.runDir, 'run-result.json'), earlyResult);
 
-  // ── OpenCV (optional, may be skipped for large images) ────────────────────
+  // ── OpenCV: per-tile analysis on top mismatch zones ──────────────────────
   let opencv = { reportPath: '', report: null };
-  if (hasReferenceImage && (tileReport?.topMismatchTiles?.length || !tileReport)) {
+  if (hasReferenceImage && tileReport?.topMismatchTiles?.length) {
+    const topTiles = tileReport.topMismatchTiles.slice(0, 3);
     opencv = await runOpenCvAnalysis(
       referenceImagePath, screenshotPath, pixelmatch.diffPath,
-      pixelmatchDir, figmaNodePath, viewport
+      pixelmatchDir, figmaNodePath, topTiles
     );
   }
 
