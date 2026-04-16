@@ -1,6 +1,7 @@
 ---
 name: figma-pixel
 description: Compare a webpage or UI layout against a Figma design, then guide the agent to build or fix the implementation. Scripts handle capture, comparison, and reporting; the agent applies layout fixes based on Figma data and diff results. Use when the user provides a Figma URL and asks to build, recreate, match, compare, restyle, or tighten implementation to that design.
+tools: Read, Write, Edit, Bash, Glob, Grep
 metadata:
   openclaw:
     emoji: 📐
@@ -25,7 +26,7 @@ The scripts do not auto-patch code. They produce the data and artifacts the agen
 This skill should behave in a production-ready way:
 - require a valid `FIGMA_TOKEN`
 - prefer stable scripted flows over ad-hoc commands
-- keep runtime artifacts out of the implementation project directory
+- **never create working folders, scratch files, or runtime artifacts inside the implementation project directory** — all run outputs go under the skill's own `figma-pixel-runs/` directory (i.e. alongside this SKILL.md file)
 - reuse shared Figma artifacts when possible
 - stop clearly on real blockers instead of silently degrading
 
@@ -91,7 +92,7 @@ Read `references/figma.md` for the expected Figma input layer.
 ## Step 2, prepare the reference image
 
 - Start each comparison run by creating a dedicated run folder with `scripts/init-run-dir.cjs`.
-- Store all outputs under `figma-pixel-runs/<project-slug>/<run-id>/`.
+- Store all outputs under the skill's `figma-pixel-runs/<project-slug>/<run-id>/` directory — this folder lives next to SKILL.md, not inside the implementation project.
 - Reuse shared Figma artifacts under `figma-pixel-runs/<project-slug>/shared/figma/` so repeated runs for the same file/node do not refetch the same Figma file, node, and reference image every time.
 - Save the Figma-derived reference image in that run directory.
 - Do not create ad-hoc working folders or scratch assets inside the implementation project for Figma processing, such as `.figma-source`, temporary export caches, or other non-project runtime files. Keep working files in the run directory or shared cache only.
@@ -107,7 +108,19 @@ Read `references/figma.md` for the expected Figma input layer.
 
 Read `references/artifacts.md` for the expected artifact set.
 
-## Step 3, open the implementation stably
+## Step 3, build initial implementation (if starting from scratch)
+
+Skip this step if an implementation already exists — go directly to Step 4.
+
+If no implementation exists yet:
+- Read Figma frame bounds, layout structure, colors, typography, spacing, and component hierarchy from the API data.
+- Detect the project type from context: check for `package.json`, framework config files (`next.config.*`, `vite.config.*`, `nuxt.config.*`, etc.), or ask the user if unclear.
+- Create the implementation using the conventions of the detected stack — follow its standard file and component conventions, and match the styling approach already used in the project.
+- Use Figma-derived values for all properties — do not invent defaults.
+- Do not add placeholder content or lorem ipsum when Figma already defines real content.
+- After creating the file(s), continue to Step 4.
+
+## Step 4, open the implementation stably
 
 Prefer the most stable path that avoids unnecessary build-tool churn.
 
@@ -190,6 +203,17 @@ Use `scripts/generate-layout-report.cjs` at the end of the pipeline to produce b
 If tooling failed but useful artifacts exist, say so plainly and continue with the best available diff method.
 If the page is unreachable, `FIGMA_TOKEN` is missing, or required artifacts cannot be produced, stop and report the blocking reason clearly.
 At the end of the task, ask the user whether they want to clean up working files under `figma-pixel-runs/<project-slug>/` before deleting anything.
+
+## Step 8, ask about the next iteration
+
+After summarizing results, always ask the user whether to run another iteration.
+
+Show the current mismatch percentage and the top remaining mismatches, then ask:
+- whether to continue with another round of fixes
+- which specific issues to prioritize in the next pass, or whether to let the agent decide based on the diff
+
+Do not start the next iteration without explicit user confirmation.
+If the user confirms, return to Step 6 and repeat from there.
 
 ## Output contract
 

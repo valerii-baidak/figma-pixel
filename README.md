@@ -1,6 +1,6 @@
 # figma-pixel
 
-`figma-pixel` is an OpenClaw skill for turning Figma layouts into real front-end pages and bringing existing implementations closer to the original design.
+`figma-pixel` is a skill for turning Figma layouts into real front-end pages and bringing existing implementations closer to the original design. It works with both **OpenClaw** and **Claude Code**.
 
 Use it when you need to:
 - build a page from a Figma mockup
@@ -42,7 +42,31 @@ Main packages used by the skill:
 - `pngjs`
 - `@techstark/opencv-js`
 
-Security notes:
+## Installation
+
+### Claude Code
+
+Copy this skill into your global skills directory:
+
+```bash
+mkdir -p ~/.claude/skills/figma-pixel
+cp -r . ~/.claude/skills/figma-pixel/
+```
+
+Or for a specific project:
+
+```bash
+mkdir -p .claude/skills/figma-pixel
+cp -r . .claude/skills/figma-pixel/
+```
+
+Claude Code will auto-discover the skill and make it available as `/figma-pixel`.
+
+### OpenClaw
+
+Install via the OpenClaw hub or copy this directory into your OpenClaw skills folder.
+
+## Security notes
 - The skill does not install dependencies from inside the package.
 - Runtime scripts fail with explicit prerequisite errors when dependencies are missing.
 - Figma responses are stored locally as run artifacts for comparison and debugging.
