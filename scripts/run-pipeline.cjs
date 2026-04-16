@@ -70,26 +70,26 @@ function annotateTilesWithSections(tileReport, implSpecPath) {
   try {
     if (fs.existsSync(implSpecPath)) {
       const spec = JSON.parse(fs.readFileSync(implSpecPath, 'utf8'));
-      sections = (spec.sections || []).map((s) => ({
-        name: s.name,
-        y: s.bounds?.y ?? 0,
-        height: s.bounds?.height ?? 0,
+      sections = (spec.sections || []).map((section) => ({
+        name: section.name,
+        y: section.bounds?.y ?? 0,
+        height: section.bounds?.height ?? 0,
       }));
     }
   } catch {}
   if (!sections.length) return tileReport;
 
-  function sectionForY(y) {
+  function sectionForY(tileY) {
     for (const sec of sections) {
-      if (y >= sec.y && y < sec.y + sec.height) {
-        return { sectionName: sec.name, sectionRelativeY: y - sec.y };
+      if (tileY >= sec.y && tileY < sec.y + sec.height) {
+        return { sectionName: sec.name, sectionRelativeY: tileY - sec.y };
       }
     }
     return {};
   }
 
-  const annotatedTiles = tileReport.tiles.map((t) => ({ ...t, ...sectionForY(t.y) }));
-  const annotatedTop = (tileReport.topMismatchTiles || []).map((t) => ({ ...t, ...sectionForY(t.y) }));
+  const annotatedTiles = tileReport.tiles.map((tile) => ({ ...tile, ...sectionForY(tile.y) }));
+  const annotatedTop = (tileReport.topMismatchTiles || []).map((tile) => ({ ...tile, ...sectionForY(tile.y) }));
   return { ...tileReport, tiles: annotatedTiles, topMismatchTiles: annotatedTop };
 }
 
@@ -101,8 +101,8 @@ function buildTopMismatches({ hasReferenceImage, viewport, renderJson, exportJso
   if (renderJson.failedRequests?.length) top.push(`failed requests: ${renderJson.failedRequests.length}`);
   if (renderJson.badResponses?.length) top.push(`bad responses: ${renderJson.badResponses.length}`);
   if (tileCompare?.topMismatchTiles?.length) {
-    for (const t of tileCompare.topMismatchTiles.slice(0, 3)) {
-      top.push(`tile y=${t.y}–${t.y + t.height}px: ${t.diffPercent}% mismatch`);
+    for (const tile of tileCompare.topMismatchTiles.slice(0, 3)) {
+      top.push(`tile y=${tile.y}–${tile.y + tile.height}px: ${tile.diffPercent}% mismatch`);
     }
   }
   if (opencvReport?.ok && Array.isArray(opencvReport.summary)) {
@@ -136,7 +136,7 @@ function runFinalReport(options) {
 function readPreviousMismatch(projectDir, currentRunId) {
   try {
     const entries = fs.readdirSync(projectDir)
-      .filter((e) => e !== 'shared' && e !== currentRunId)
+      .filter((entry) => entry !== 'shared' && entry !== currentRunId)
       .sort();
     if (!entries.length) return null;
     const prev = entries[entries.length - 1];
@@ -149,8 +149,8 @@ function readPreviousMismatch(projectDir, currentRunId) {
   }
 }
 
-const positional = process.argv.slice(2).filter((a) => !a.startsWith('--'));
-const flags = new Set(process.argv.slice(2).filter((a) => a.startsWith('--')));
+const positional = process.argv.slice(2).filter((arg) => !arg.startsWith('--'));
+const flags = new Set(process.argv.slice(2).filter((arg) => arg.startsWith('--')));
 const compareOnly = flags.has('--compare-only');
 
 const figmaUrl = positional[0];
