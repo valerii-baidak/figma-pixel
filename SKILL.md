@@ -151,10 +151,13 @@ The spec gives you in one file:
 
 **Before writing or editing ANY text-bearing CSS, read `typography-map.json`.** `run-pipeline.cjs` generates it next to `implementation-spec.json` (path under `artifacts.typographyMap`). It is a deduped list of every unique text style in the design — each entry has `fontFamily`, `fontSize`, `fontWeight`, `fontStyle`, `lineHeightPx`, `letterSpacing`, `color`, `occurrences`, and `samples`. Use these values verbatim for every text rule. Do not eyeball typography from the reference image, do not default to "none" on `letter-spacing` or `1` on `line-height`. Every one of the six typography fields — family, size, weight, style, line-height, letter-spacing — must come from `typography-map.json`.
 
-To generate it manually (if running scripts individually instead of via the pipeline):
+**Before writing or editing ANY margin / padding / gap, read `spacing-map.json`.** `run-pipeline.cjs` generates it next to `implementation-spec.json` (path under `artifacts.spacingMap`). It is a flat list of every auto-layout container with its `mode`, `paddingTop/Right/Bottom/Left`, `itemSpacing`, and `bounds`, plus a `summary` of unique gap and padding values used in the design. Each entry has a `path` breadcrumb (e.g. `Section > Content > Texts`) so you can locate the exact Figma node for any container you render. Cite a concrete entry when picking a spacing value — if no auto-layout node matches the element you are styling, that is a blocker, not an invitation to guess.
+
+To generate these manually (if running scripts individually instead of via the pipeline):
 
 ```bash
 node scripts/extract-typography.cjs <path-to-implementation-spec.json>
+node scripts/extract-spacing-map.cjs <path-to-implementation-spec.json>
 ```
 
 Read `references/scripts.md` for the exact argument format and output contract.
@@ -315,7 +318,7 @@ Before considering the task done, verify this fidelity checklist:
 - colors match Figma API values
 - corner radius matches Figma
 - dimensions match Figma bounds
-- spacing, padding, and gaps match Figma
+- spacing, padding, and gaps match Figma — every margin / padding / gap value must trace to a specific container entry in `spacing-map.json`; do not mark done if any value is eyeballed or picked as a round default
 - typography matches Figma — verify every one of the six fields (`fontFamily`, `fontSize`, `fontWeight`, `fontStyle`, `lineHeightPx`, `letterSpacing`) against `typography-map.json` for each text style used; do not mark done if any field is eyeballed or defaulted
 - correct Figma-derived images or exports are used
 - no invented placeholders remain where Figma provides real assets

@@ -82,6 +82,29 @@ node scripts/extract-typography.cjs <implementation-spec.json> [output-path]
 
 ---
 
+## `extract-spacing-map.cjs`  ⬅ spacing gate
+
+```
+node scripts/extract-spacing-map.cjs <implementation-spec.json> [output-path]
+```
+
+**Input:**
+- `implementation-spec.json` — output of `extract-implementation-data.cjs`
+- `output-path` — where to write `spacing-map.json` (default: same dir as input)
+
+**Output (stdout):** `{ ok, outputPath, count }`.  
+**Files written:** `spacing-map.json` — flat list of every auto-layout container. Each entry:
+- `id`, `name`, `path` — Figma node id, name, and breadcrumb (e.g. `Section > Content > Texts`)
+- `mode` — `HORIZONTAL` | `VERTICAL`
+- `paddingTop`, `paddingRight`, `paddingBottom`, `paddingLeft`, `itemSpacing` — the five spacing values
+- `bounds` — absolute `{ x, y, width, height }`
+
+Also includes a `summary` block with `uniqueGaps` and `uniquePaddings` — the distinct values used across the design, sorted by frequency.
+
+**When to use:** `run-pipeline.cjs` generates this automatically alongside `implementation-spec.json`. Read it before writing or editing any `margin` / `padding` / `gap` in CSS. Every spacing value must trace to a specific container entry here — picking round defaults (16, 24, 32) by eye is the other common cause of residual pixel mismatch.
+
+---
+
 ## `export-figma-image.cjs`
 
 ```

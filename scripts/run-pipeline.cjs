@@ -12,6 +12,7 @@ const { prepareFigmaState, prepareCompareOnlyState, writeJson } = require('../li
 const { extractDesignTokensFromFile } = require('../lib/design-tokens.cjs');
 const { extractFromFile: extractImplementationData } = require('../lib/implementation-extractor.cjs');
 const { buildTypographyMap } = require('./extract-typography.cjs');
+const { buildSpacingMap } = require('./extract-spacing-map.cjs');
 
 function initRun(projectSlug, runId) {
   const manifest = createRunManifest(projectSlug, runId || '', path.resolve(process.cwd(), 'figma-pixel-runs'));
@@ -58,6 +59,63 @@ async function runOpenCvAnalysis(referenceImage, screenshotPath, diffPath, pixel
     if (!fs.existsSync(reportPath)) writeJson(reportPath, report);
     return { reportPath, report };
   }
+}
+
+/**
+ * Ensure a JSON artifact exists at outputPath. If a shared cache copy exists,
+ * reuse it; otherwise invoke `generate()`, write the result to outputPath, and
+ * (when sharedPath is set) persist a copy to the shared cache.
+ * Silently swallows generator errors so a single failure does not block the
+ * pipeline.
+ */
+function ensureJsonArtifact({ outputPath, sharedPath, generate }) {
+  if (fs.existsSync(outputPath)) return;
+  if (sharedPath && fs.existsSync(sharedPath)) {
+    fs.copyFileSync(sharedPath, outputPath);
+    return;
+  }
+  try {
+    const data = generate();
+    if (!data) return;
+    writeJson(outputPath, data);
+    if (sharedPath) writeJson(sharedPath, data);
+  } catch {}
+}
+
+/**
+ * Generate the Figma-derived analysis artifacts used by the agent:
+ * design-tokens, implementation-spec, typography-map, spacing-map.
+ * Each artifact reuses its shared cache when available.
+ */
+function ensureFigmaArtifacts({ figmaNodePath, parsedFigma, paths, sharedPaths }) {
+  if (!fs.existsSync(figmaNodePath)) return;
+
+  ensureJsonArtifact({
+    outputPath: paths.designTokens,
+    sharedPath: null,
+    generate: () => extractDesignTokensFromFile(figmaNodePath, parsedFigma.nodeId),
+  });
+
+  ensureJsonArtifact({
+    outputPath: paths.implSpec,
+    sharedPath: sharedPaths.implSpec,
+    generate: () => extractImplementationData(figmaNodePath, parsedFigma.nodeId),
+  });
+
+  if (!fs.existsSync(paths.implSpec)) return;
+  const readSpec = () => JSON.parse(fs.readFileSync(paths.implSpec, 'utf8'));
+
+  ensureJsonArtifact({
+    outputPath: paths.typographyMap,
+    sharedPath: sharedPaths.typographyMap,
+    generate: () => ({ ...buildTypographyMap(readSpec()), sourcePath: paths.implSpec }),
+  });
+
+  ensureJsonArtifact({
+    outputPath: paths.spacingMap,
+    sharedPath: sharedPaths.spacingMap,
+    generate: () => ({ ...buildSpacingMap(readSpec()), sourcePath: paths.implSpec }),
+  });
 }
 
 /**
@@ -193,45 +251,26 @@ async function main() {
   const designTokensPath = path.join(figmaDir, 'design-tokens.json');
   const implSpecPath = path.join(figmaDir, 'implementation-spec.json');
   const typographyMapPath = path.join(figmaDir, 'typography-map.json');
+  const spacingMapPath = path.join(figmaDir, 'spacing-map.json');
   const sharedImplSpecPath = path.join(sharedPaths.cacheDir, 'implementation-spec.json');
   const sharedTypographyMapPath = path.join(sharedPaths.cacheDir, 'typography-map.json');
+  const sharedSpacingMapPath = path.join(sharedPaths.cacheDir, 'spacing-map.json');
 
-  if (fs.existsSync(figmaNodePath)) {
-    // design tokens (legacy)
-    if (!fs.existsSync(designTokensPath)) {
-      try {
-        const tokens = extractDesignTokensFromFile(figmaNodePath, parsedFigma.nodeId);
-        writeJson(designTokensPath, tokens);
-      } catch {}
-    }
-    // implementation spec — use shared cache so it isn't regenerated every run
-    if (!fs.existsSync(implSpecPath)) {
-      if (fs.existsSync(sharedImplSpecPath)) {
-        fs.copyFileSync(sharedImplSpecPath, implSpecPath);
-      } else {
-        try {
-          const spec = extractImplementationData(figmaNodePath, parsedFigma.nodeId);
-          writeJson(implSpecPath, spec);
-          // persist to shared so subsequent runs reuse it
-          writeJson(sharedImplSpecPath, spec);
-        } catch {}
-      }
-    }
-    // typography map — deduped text-style reference for every text node
-    if (!fs.existsSync(typographyMapPath) && fs.existsSync(implSpecPath)) {
-      if (fs.existsSync(sharedTypographyMapPath)) {
-        fs.copyFileSync(sharedTypographyMapPath, typographyMapPath);
-      } else {
-        try {
-          const spec = JSON.parse(fs.readFileSync(implSpecPath, 'utf8'));
-          const tmap = buildTypographyMap(spec);
-          tmap.sourcePath = implSpecPath;
-          writeJson(typographyMapPath, tmap);
-          writeJson(sharedTypographyMapPath, tmap);
-        } catch {}
-      }
-    }
-  }
+  ensureFigmaArtifacts({
+    figmaNodePath,
+    parsedFigma,
+    paths: {
+      designTokens: designTokensPath,
+      implSpec: implSpecPath,
+      typographyMap: typographyMapPath,
+      spacingMap: spacingMapPath,
+    },
+    sharedPaths: {
+      implSpec: sharedImplSpecPath,
+      typographyMap: sharedTypographyMapPath,
+      spacingMap: sharedSpacingMapPath,
+    },
+  });
 
   let pixelmatch = { diffPath: '', reportPath: '', report: null };
   let tileReport = null;
@@ -269,6 +308,7 @@ async function main() {
       figmaNode: path.join(figmaDir, 'figma-node.json'),
       implementationSpec: fs.existsSync(implSpecPath) ? implSpecPath : null,
       typographyMap: fs.existsSync(typographyMapPath) ? typographyMapPath : null,
+      spacingMap: fs.existsSync(spacingMapPath) ? spacingMapPath : null,
       designTokens: fs.existsSync(designTokensPath) ? designTokensPath : null,
       parsedFigmaUrl: path.join(figmaDir, 'parsed-figma-url.json'),
       viewport: path.join(figmaDir, 'viewport.json'),
