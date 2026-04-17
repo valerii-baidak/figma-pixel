@@ -13,6 +13,7 @@ const { extractDesignTokensFromFile } = require('../lib/design-tokens.cjs');
 const { extractFromFile: extractImplementationData } = require('../lib/implementation-extractor.cjs');
 const { buildTypographyMap } = require('./extract-typography.cjs');
 const { buildSpacingMap } = require('./extract-spacing-map.cjs');
+const { buildStrokesMap } = require('./extract-strokes-map.cjs');
 
 function initRun(projectSlug, runId) {
   const manifest = createRunManifest(projectSlug, runId || '', path.resolve(process.cwd(), 'figma-pixel-runs'));
@@ -115,6 +116,12 @@ function ensureFigmaArtifacts({ figmaNodePath, parsedFigma, paths, sharedPaths }
     outputPath: paths.spacingMap,
     sharedPath: sharedPaths.spacingMap,
     generate: () => ({ ...buildSpacingMap(readSpec()), sourcePath: paths.implSpec }),
+  });
+
+  ensureJsonArtifact({
+    outputPath: paths.strokesMap,
+    sharedPath: sharedPaths.strokesMap,
+    generate: () => ({ ...buildStrokesMap(readSpec()), sourcePath: paths.implSpec }),
   });
 }
 
@@ -252,9 +259,11 @@ async function main() {
   const implSpecPath = path.join(figmaDir, 'implementation-spec.json');
   const typographyMapPath = path.join(figmaDir, 'typography-map.json');
   const spacingMapPath = path.join(figmaDir, 'spacing-map.json');
+  const strokesMapPath = path.join(figmaDir, 'strokes-map.json');
   const sharedImplSpecPath = path.join(sharedPaths.cacheDir, 'implementation-spec.json');
   const sharedTypographyMapPath = path.join(sharedPaths.cacheDir, 'typography-map.json');
   const sharedSpacingMapPath = path.join(sharedPaths.cacheDir, 'spacing-map.json');
+  const sharedStrokesMapPath = path.join(sharedPaths.cacheDir, 'strokes-map.json');
 
   ensureFigmaArtifacts({
     figmaNodePath,
@@ -264,11 +273,13 @@ async function main() {
       implSpec: implSpecPath,
       typographyMap: typographyMapPath,
       spacingMap: spacingMapPath,
+      strokesMap: strokesMapPath,
     },
     sharedPaths: {
       implSpec: sharedImplSpecPath,
       typographyMap: sharedTypographyMapPath,
       spacingMap: sharedSpacingMapPath,
+      strokesMap: sharedStrokesMapPath,
     },
   });
 
@@ -309,6 +320,7 @@ async function main() {
       implementationSpec: fs.existsSync(implSpecPath) ? implSpecPath : null,
       typographyMap: fs.existsSync(typographyMapPath) ? typographyMapPath : null,
       spacingMap: fs.existsSync(spacingMapPath) ? spacingMapPath : null,
+      strokesMap: fs.existsSync(strokesMapPath) ? strokesMapPath : null,
       designTokens: fs.existsSync(designTokensPath) ? designTokensPath : null,
       parsedFigmaUrl: path.join(figmaDir, 'parsed-figma-url.json'),
       viewport: path.join(figmaDir, 'viewport.json'),

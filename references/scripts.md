@@ -105,6 +105,34 @@ Also includes a `summary` block with `uniqueGaps` and `uniquePaddings` — the d
 
 ---
 
+## `extract-strokes-map.cjs`  ⬅ strokes/borders gate
+
+```
+node scripts/extract-strokes-map.cjs <implementation-spec.json> [output-path]
+```
+
+**Input:**
+- `implementation-spec.json` — output of `extract-implementation-data.cjs`
+- `output-path` — where to write `strokes-map.json` (default: same dir as input)
+
+**Output (stdout):** `{ ok, outputPath, count }`.
+**Files written:** `strokes-map.json` — flat list of every node with a visible Figma stroke. Each entry:
+- `id`, `name`, `type`, `path` — Figma node id, name, and breadcrumb (e.g. `Section > Header`)
+- `bounds` — absolute `{ x, y, width, height }`
+- `color` — stroke color hex (e.g. `#222222`)
+- `weight` — base `strokeWeight`
+- `align` — `INSIDE` | `OUTSIDE` | `CENTER`
+- `sides[]` — which of `top` / `right` / `bottom` / `left` actually carry a stroke (derived from `individualStrokeWeights`; all four when the stroke is uniform)
+- `perSideWeight` — exact per-side weight (`{top, right, bottom, left}`); use this for `border-top-width` etc.
+- `dashPattern` — `strokeDashes` array when present, otherwise `null`
+- `cornerRadius`, `cornerRadii` — for rendering rounded borders
+
+Also includes a `summary` block with `uniqueColors`, `uniqueWeights`, `sideDistribution` (how often each side is used), and `allSidesCount` / `partialSidesCount` (how many strokes are full-box vs single-side).
+
+**When to use:** `run-pipeline.cjs` generates this automatically alongside `implementation-spec.json`. Read it before writing or editing any `border*` / `outline*` / divider CSS. Partial strokes (single-side borders) are the most commonly missed property in pixel-perfect work — they appear as thin lines in the diff and are easy to dismiss as antialiasing artifacts. Every border in CSS must trace to a concrete entry here.
+
+---
+
 ## `export-figma-image.cjs`
 
 ```

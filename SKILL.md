@@ -137,7 +137,7 @@ When using `run-pipeline.cjs`, this file is generated automatically — check `a
 
 The spec gives you in one file:
 - `viewport` — exact frame dimensions (width × height)
-- `sections[]` — full annotated node tree with `bounds` (relative to root 0,0), `fill`, `stroke`, `cornerRadius`, `layout` (auto-layout mode/padding/gap), `effects`
+- `sections[]` — full annotated node tree with `bounds` (relative to root 0,0), `fill`, `stroke` (including `individualStrokeWeights` + `dashPattern` when present), `cornerRadius`, `layout` (auto-layout mode/padding/gap), `effects`
 - `texts[]` — flat list of every text node with `characters`, `style`, and (when present) `styledRuns[]`
 - `fonts[]` — unique font families used
 - `colors[]` — all fill colors sorted by frequency, as `{ hex, count }`
@@ -153,11 +153,14 @@ The spec gives you in one file:
 
 **Before writing or editing ANY margin / padding / gap, read `spacing-map.json`.** `run-pipeline.cjs` generates it next to `implementation-spec.json` (path under `artifacts.spacingMap`). It is a flat list of every auto-layout container with its `mode`, `paddingTop/Right/Bottom/Left`, `itemSpacing`, and `bounds`, plus a `summary` of unique gap and padding values used in the design. Each entry has a `path` breadcrumb (e.g. `Section > Content > Texts`) so you can locate the exact Figma node for any container you render. Cite a concrete entry when picking a spacing value — if no auto-layout node matches the element you are styling, that is a blocker, not an invitation to guess.
 
+**Before writing or editing ANY border / outline / divider CSS, read `strokes-map.json`.** `run-pipeline.cjs` generates it next to `implementation-spec.json` (path under `artifacts.strokesMap`). It is a flat list of every node with a visible Figma stroke — each entry has `path` (breadcrumb), `bounds`, `color`, `weight`, `align`, `sides[]` (which of top/right/bottom/left are active), `perSideWeight`, `dashPattern`, and `cornerRadius/cornerRadii`, plus a `summary` of unique colors, weights, and side-distribution. **Partial strokes (single-side borders like a header's bottom divider or a footer's top divider) are the most commonly missed property** — Figma expresses them via `individualStrokeWeights`, and they render as thin horizontal or vertical lines that are easy to dismiss as diff artifacts. Every `border*` / `outline*` / horizontal or vertical divider in CSS must trace to an entry here. If a section header or footer appears in `strokes-map.json` with `sides: ["bottom"]` or `sides: ["top"]`, that is a required `border-bottom` / `border-top` — do not treat it as optional decoration. For light backgrounds Figma usually uses a dark stroke color and vice versa; always read `color` from the entry rather than guessing from the section background.
+
 To generate these manually (if running scripts individually instead of via the pipeline):
 
 ```bash
 node scripts/extract-typography.cjs <path-to-implementation-spec.json>
 node scripts/extract-spacing-map.cjs <path-to-implementation-spec.json>
+node scripts/extract-strokes-map.cjs <path-to-implementation-spec.json>
 ```
 
 Read `references/scripts.md` for the exact argument format and output contract.
@@ -255,7 +258,7 @@ Do not invent page, section, card, or preview colors when the Figma file already
 Matching colors directly from Figma can materially reduce mismatch and should be preferred over manual palette guessing.
 Read and apply `cornerRadius` or `rectangleCornerRadii` from Figma for cards, buttons, inputs, images, and preview panels instead of defaulting to generic border radius values.
 Match typography from Figma, including font family, font size, font weight, line height, letter spacing, and text alignment.
-Match borders and visible effects from Figma, including stroke width, stroke color, shadow, blur, and opacity when they materially affect the rendered result.
+Match borders and visible effects from Figma, including stroke width, stroke color, shadow, blur, and opacity when they materially affect the rendered result. Consult `strokes-map.json` for every border decision — including partial/single-side strokes (header bottom dividers, footer top dividers, card outlines). A thin horizontal line visible in the diff is almost always a missing `border-bottom` / `border-top` from a node with `individualStrokeWeights` set on one side; do not dismiss such lines as antialiasing or rendering artifacts.
 Use the correct Figma-derived assets for images, thumbnails, screenshots, and fills. If an asset cannot be extracted from Figma, report the blocker clearly instead of silently substituting an incorrect image.
 Prefer exact layout dimensions from Figma bounds over approximate CSS values. Avoid "close enough" sizing when the design provides exact measurements.
 
