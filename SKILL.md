@@ -201,11 +201,19 @@ Always try to produce these artifacts:
 - mismatch percentage
 - machine-readable report
 
-After producing these artifacts, **read all three images visually** (reference, screenshot, diff) using the Read tool. Visual inspection is mandatory — it reveals wrong asset types (text where a vector logo should be), missing or misplaced elements, and color/structural mismatches that tile percentages alone cannot identify.
+`run-pipeline.cjs` runs a tile comparison automatically (300px horizontal bands) and writes `pixelmatch/tile-report.json`. Read `tileCompare.topMismatchTiles` from the run result to identify the highest-mismatch vertical zones first. Each tile entry includes `sectionName` and `sectionRelativeY` — use these to know which section to inspect without manually dividing by section height.
 
-`run-pipeline.cjs` also runs a tile comparison automatically (300px horizontal bands) and writes `pixelmatch/tile-report.json`. Read `tileCompare.topMismatchTiles` from the run result to know which vertical zones to prioritize before making fixes. OpenCV then runs **per tile** on the top 3 highest-mismatch bands (not on the full image), so it works correctly for full-page designs of any height without WASM memory issues. Each reported region includes `tileY` (the tile's absolute Y offset) and `y` (absolute Y coordinate in the full image).
+**Visually inspect top mismatch tiles before looking at the full-page diff.** For each top tile, crop the reference, screenshot, and diff images at the exact tile y-coordinates and read them with the Read tool. Use `scripts/crop-tile.cjs` for precise cropping (platform crop tools like `sips` use unreliable coordinate systems):
 
-Each tile entry now also includes `sectionName` and `sectionRelativeY` when section data is available from the implementation spec — use these to immediately know which section to inspect without manually dividing `y` by section height.
+```bash
+node scripts/crop-tile.cjs <src.png> <dst.png> <y> <height>
+```
+
+Tile-level inspection identifies the actual cause of each mismatch zone — missing borders, wrong icon direction, layout shift from text height differences — rather than guessing from the full-page view.
+
+After inspecting the top tiles, **read all three full-page images** (reference, screenshot, diff) using the Read tool for a structural overview. Full-page inspection catches issues that span multiple tiles: wrong section count, missing sections, wrong page height, or broad color/background mismatches.
+
+OpenCV runs **per tile** on the top 3 highest-mismatch bands (not on the full image), so it works correctly for full-page designs of any height without WASM memory issues. Each reported region includes `tileY` (the tile's absolute Y offset) and `y` (absolute Y coordinate in the full image).
 
 After each run, `run-result.json` is written to the run directory as soon as pixelmatch and tile comparison finish — before OpenCV. Read it first: it contains `mismatch` (diffPercent), `delta` (change vs previous run), `tileCompare.topMismatchTiles`, and `artifacts` paths. If the pipeline crashes after tile comparison, `run-result.json` still exists with the essential data.
 
