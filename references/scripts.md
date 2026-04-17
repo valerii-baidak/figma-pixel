@@ -61,6 +61,27 @@ It replaces ad-hoc `python3 -c` queries against the raw JSON.
 
 ---
 
+## `extract-typography.cjs`  ⬅ typography gate
+
+```
+node scripts/extract-typography.cjs <implementation-spec.json> [output-path]
+```
+
+**Input:**
+- `implementation-spec.json` — output of `extract-implementation-data.cjs`
+- `output-path` — where to write `typography-map.json` (default: same dir as input)
+
+**Output (stdout):** `{ ok, outputPath, count }`.  
+**Files written:** `typography-map.json` — deduped list of every unique text style used in the design. Each entry:
+- `key` — internal dedupe key
+- `fontFamily`, `fontSize`, `fontWeight`, `fontStyle`, `lineHeightPx`, `letterSpacing`, `color` — the six+1 typography fields from Figma
+- `occurrences` — how many text nodes share this style
+- `samples[]` — up to three example `characters` strings
+
+**When to use:** `run-pipeline.cjs` generates this automatically alongside `implementation-spec.json`. Read it before writing or editing any text-bearing CSS. Every typography field on every text rule must come from here — eyeballing letter-spacing or line-height is the single most common cause of residual pixel mismatch.
+
+---
+
 ## `export-figma-image.cjs`
 
 ```

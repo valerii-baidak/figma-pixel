@@ -149,6 +149,14 @@ The spec gives you in one file:
 
 **Check `styledRuns[]` on every TEXT entry before writing markup.** When a `texts[]` entry has `styledRuns`, the text contains mixed styling — bold spans, colour changes, or font-weight overrides. Render each run using the appropriate inline element (`<strong>`, `<em>`, or `<span>`) with styles derived from `styledRuns[].style`. Ignoring `styledRuns` produces flat-weight text that causes layout reflow and pixel mismatches. Each run: `{ start, end, characters, style }` where `style` is already the merged result of the base style and the Figma override.
 
+**Before writing or editing ANY text-bearing CSS, read `typography-map.json`.** `run-pipeline.cjs` generates it next to `implementation-spec.json` (path under `artifacts.typographyMap`). It is a deduped list of every unique text style in the design — each entry has `fontFamily`, `fontSize`, `fontWeight`, `fontStyle`, `lineHeightPx`, `letterSpacing`, `color`, `occurrences`, and `samples`. Use these values verbatim for every text rule. Do not eyeball typography from the reference image, do not default to "none" on `letter-spacing` or `1` on `line-height`. Every one of the six typography fields — family, size, weight, style, line-height, letter-spacing — must come from `typography-map.json`.
+
+To generate it manually (if running scripts individually instead of via the pipeline):
+
+```bash
+node scripts/extract-typography.cjs <path-to-implementation-spec.json>
+```
+
 Read `references/scripts.md` for the exact argument format and output contract.
 
 ## Step 3, build initial implementation (if starting from scratch)
@@ -308,7 +316,7 @@ Before considering the task done, verify this fidelity checklist:
 - corner radius matches Figma
 - dimensions match Figma bounds
 - spacing, padding, and gaps match Figma
-- typography matches Figma
+- typography matches Figma — verify every one of the six fields (`fontFamily`, `fontSize`, `fontWeight`, `fontStyle`, `lineHeightPx`, `letterSpacing`) against `typography-map.json` for each text style used; do not mark done if any field is eyeballed or defaulted
 - correct Figma-derived images or exports are used
 - no invented placeholders remain where Figma provides real assets
 

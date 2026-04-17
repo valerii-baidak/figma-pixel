@@ -11,6 +11,7 @@ const { compareTiles } = require('../lib/tile-compare.cjs');
 const { prepareFigmaState, prepareCompareOnlyState, writeJson } = require('../lib/figma-cache.cjs');
 const { extractDesignTokensFromFile } = require('../lib/design-tokens.cjs');
 const { extractFromFile: extractImplementationData } = require('../lib/implementation-extractor.cjs');
+const { buildTypographyMap } = require('./extract-typography.cjs');
 
 function initRun(projectSlug, runId) {
   const manifest = createRunManifest(projectSlug, runId || '', path.resolve(process.cwd(), 'figma-pixel-runs'));
@@ -191,7 +192,9 @@ async function main() {
   const figmaNodePath = path.join(figmaDir, 'figma-node.json');
   const designTokensPath = path.join(figmaDir, 'design-tokens.json');
   const implSpecPath = path.join(figmaDir, 'implementation-spec.json');
+  const typographyMapPath = path.join(figmaDir, 'typography-map.json');
   const sharedImplSpecPath = path.join(sharedPaths.cacheDir, 'implementation-spec.json');
+  const sharedTypographyMapPath = path.join(sharedPaths.cacheDir, 'typography-map.json');
 
   if (fs.existsSync(figmaNodePath)) {
     // design tokens (legacy)
@@ -211,6 +214,20 @@ async function main() {
           writeJson(implSpecPath, spec);
           // persist to shared so subsequent runs reuse it
           writeJson(sharedImplSpecPath, spec);
+        } catch {}
+      }
+    }
+    // typography map — deduped text-style reference for every text node
+    if (!fs.existsSync(typographyMapPath) && fs.existsSync(implSpecPath)) {
+      if (fs.existsSync(sharedTypographyMapPath)) {
+        fs.copyFileSync(sharedTypographyMapPath, typographyMapPath);
+      } else {
+        try {
+          const spec = JSON.parse(fs.readFileSync(implSpecPath, 'utf8'));
+          const tmap = buildTypographyMap(spec);
+          tmap.sourcePath = implSpecPath;
+          writeJson(typographyMapPath, tmap);
+          writeJson(sharedTypographyMapPath, tmap);
         } catch {}
       }
     }
@@ -251,6 +268,7 @@ async function main() {
     artifacts: {
       figmaNode: path.join(figmaDir, 'figma-node.json'),
       implementationSpec: fs.existsSync(implSpecPath) ? implSpecPath : null,
+      typographyMap: fs.existsSync(typographyMapPath) ? typographyMapPath : null,
       designTokens: fs.existsSync(designTokensPath) ? designTokensPath : null,
       parsedFigmaUrl: path.join(figmaDir, 'parsed-figma-url.json'),
       viewport: path.join(figmaDir, 'viewport.json'),
