@@ -69,13 +69,15 @@ Read `references/setup.md` for environment expectations.
 8. Agent makes visible layout fixes based on Figma data and diff results.
 9. Re-run comparison and summarize the result. Stop — further iterations only on explicit user request.
 
+**Never run the pipeline (or any comparison/capture script) without explicit user instruction.** Each pipeline run must be triggered by the user — do not auto-run after fixes, do not run "to verify", do not run multiple times in a row without asking between each.
+
 Use `scripts/run-pipeline.cjs` as the primary orchestration entry point.
 Prefer the pipeline over one-off script combinations unless you are debugging a specific failing stage.
 
 Token discipline for this skill:
 - Prefer compact artifacts first: `run-result.json`, `pipeline-summary.json`, `final/report.json`, `figma/viewport.json`, `figma/export-image-result.json`.
 - Avoid large raw files unless the compact artifacts are insufficient.
-- Do not invoke image or vision analysis by default.
+- **Always read the diff image and the reference image visually** after each comparison run. Visual inspection catches issues (wrong asset types, missing logos, wrong colors) that numeric reports alone miss.
 - Keep progress updates short and spend tokens on fixes and verification.
 
 ## Step 1, read the Figma source
@@ -103,6 +105,7 @@ Read `references/figma.md` for the expected Figma input layer.
 - Treat the exported Figma reference PNG as the exact visual target for comparison. Without the reference image, visual matching is unreliable.
 - Use real Figma-derived screenshots, exports, or crops for visual content. Do not invent placeholder preview images, surrogate mock panels, or decorative stand-ins when the Figma design already shows the real visuals.
 - When the design includes embedded preview panels, screenshots, or UI previews, prefer inserting those real Figma-derived images instead of recreating approximate placeholders.
+- **If a FRAME or GROUP node contains a complex UI mockup** (panel, component showcase, screenshot, tool window, or any multi-element composition that would require significant HTML/CSS to recreate), **always export it as PNG via the Figma images API and reference it with `<img>`**. Do not attempt to hand-code such nodes. The Figma images API endpoint is `GET /v1/images/{fileKey}?ids={nodeId}&format=png&scale=2`. Save exported PNGs to the implementation project's public/static directory and reference them directly. This is the single most impactful action for pixel accuracy — hand-coded approximations of UI mockups will always diverge from the Figma reference.
 - If the Figma node uses image fills or exportable assets, extract and use those assets instead of substituting similar images.
 - Keep the viewport/frame size explicit.
 - Preserve enough metadata to trace the comparison later: URL, node id, size, label.
@@ -114,21 +117,12 @@ Read `references/artifacts.md` for the expected artifact set.
 After fetching Figma data, extract the list of unique font families used in the design.
 Read `fontFamily` values from `figma/design-tokens.json` (typography array) if available, or from `figma-node.json` directly.
 
-**Stop here and ask the user before doing anything else:**
-> "This design uses the following fonts: **[Font A, Font B, ...]**. Should I connect them?
-> Without the correct fonts the Playwright screenshot will render fallback fonts and the pixel comparison will be inaccurate."
+**Automatically connect all fonts without asking the user.** Do not stop or prompt — just add them.
 
-**Do not proceed to Step 2c or any subsequent step until the user replies.**
-
-If the user says **yes**:
-- For each font, add a `<link>` or `@import` for Google Fonts (or the appropriate CDN) to the implementation's HTML or global CSS.
-- Prefer `<link rel="preconnect">` + `<link rel="stylesheet">` in `<head>` for HTML pages.
+- If the fonts are already present in the implementation (referenced in CSS or loaded via a font provider), skip and proceed.
+- For each missing font, add a `<link rel="preconnect">` + `<link rel="stylesheet">` for Google Fonts (or the appropriate CDN) to the implementation's HTML `<head>`.
 - For CSS-only projects, add `@import url(...)` at the top of the main stylesheet.
-- Verify the font loads in the browser before screenshotting (Playwright already waits for `document.fonts.ready`).
-
-If the user says **no**, note that comparison results may be inaccurate due to font fallbacks and continue.
-
-If the fonts are already present in the implementation (referenced in CSS or loaded via a font provider), skip the question and proceed.
+- Playwright already waits for `document.fonts.ready`, so no extra delay is needed.
 
 ## Step 2c, extract implementation spec (spec-first)
 
@@ -206,6 +200,8 @@ Always try to produce these artifacts:
 - diff image
 - mismatch percentage
 - machine-readable report
+
+After producing these artifacts, **read all three images visually** (reference, screenshot, diff) using the Read tool. Visual inspection is mandatory — it reveals wrong asset types (text where a vector logo should be), missing or misplaced elements, and color/structural mismatches that tile percentages alone cannot identify.
 
 `run-pipeline.cjs` also runs a tile comparison automatically (300px horizontal bands) and writes `pixelmatch/tile-report.json`. Read `tileCompare.topMismatchTiles` from the run result to know which vertical zones to prioritize before making fixes. OpenCV then runs **per tile** on the top 3 highest-mismatch bands (not on the full image), so it works correctly for full-page designs of any height without WASM memory issues. Each reported region includes `tileY` (the tile's absolute Y offset) and `y` (absolute Y coordinate in the full image).
 
