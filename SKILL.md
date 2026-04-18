@@ -61,12 +61,15 @@ Read `references/setup.md` for environment expectations.
 
 1. Read the Figma source.
 2. Parse the Figma URL and fetch or reuse Figma data.
-3. Export the Figma reference image.
-4. Open the implementation through the most stable available URL.
-5. Capture the current rendered page.
-6. Compare the implementation against the design.
-7. Agent makes visible layout fixes based on Figma data and diff results.
-8. Re-run comparison and summarize the result.
+3. Check fonts used in the design and ask the user whether to connect them.
+4. Export the Figma reference image.
+5. Open the implementation through the most stable available URL.
+6. Capture the current rendered page.
+7. Compare the implementation against the design.
+8. Agent makes visible layout fixes based on Figma data and diff results.
+9. Re-run comparison and summarize the result. Stop — further iterations only on explicit user request.
+
+**Never run the pipeline (or any comparison/capture script) without explicit user instruction.** Each pipeline run must be triggered by the user — do not auto-run after fixes, do not run "to verify", do not run multiple times in a row without asking between each.
 
 Use `scripts/run-pipeline.cjs` as the primary orchestration entry point.
 Prefer the pipeline over one-off script combinations unless you are debugging a specific failing stage.
@@ -74,7 +77,7 @@ Prefer the pipeline over one-off script combinations unless you are debugging a 
 Token discipline for this skill:
 - Prefer compact artifacts first: `run-result.json`, `pipeline-summary.json`, `final/report.json`, `figma/viewport.json`, `figma/export-image-result.json`.
 - Avoid large raw files unless the compact artifacts are insufficient.
-- Do not invoke image or vision analysis by default.
+- **Always read the diff image and the reference image visually** after each comparison run. Visual inspection catches issues (wrong asset types, missing logos, wrong colors) that numeric reports alone miss.
 - Keep progress updates short and spend tokens on fixes and verification.
 
 ## Step 1, read the Figma source
@@ -102,18 +105,78 @@ Read `references/figma.md` for the expected Figma input layer.
 - Treat the exported Figma reference PNG as the exact visual target for comparison. Without the reference image, visual matching is unreliable.
 - Use real Figma-derived screenshots, exports, or crops for visual content. Do not invent placeholder preview images, surrogate mock panels, or decorative stand-ins when the Figma design already shows the real visuals.
 - When the design includes embedded preview panels, screenshots, or UI previews, prefer inserting those real Figma-derived images instead of recreating approximate placeholders.
+- **If a FRAME or GROUP node contains a complex UI mockup** (panel, component showcase, screenshot, tool window, or any multi-element composition that would require significant HTML/CSS to recreate), **always export it as PNG via the Figma images API and reference it with `<img>`**. Do not attempt to hand-code such nodes. The Figma images API endpoint is `GET /v1/images/{fileKey}?ids={nodeId}&format=png&scale=2`. Save exported PNGs to the implementation project's public/static directory and reference them directly. This is the single most impactful action for pixel accuracy — hand-coded approximations of UI mockups will always diverge from the Figma reference.
 - If the Figma node uses image fills or exportable assets, extract and use those assets instead of substituting similar images.
 - Keep the viewport/frame size explicit.
 - Preserve enough metadata to trace the comparison later: URL, node id, size, label.
 
 Read `references/artifacts.md` for the expected artifact set.
 
+## Step 2b, check and connect fonts
+
+After fetching Figma data, extract the list of unique font families used in the design.
+Read `fontFamily` values from `figma/design-tokens.json` (typography array) if available, or from `figma-node.json` directly.
+
+**First classify each font as system or non-system — do not import system fonts.** System fonts ship with the OS; adding `<link>` / `@import` for them does nothing on the target platform but may trigger unnecessary network requests and makes the CSS misleading. Only non-system fonts need to be connected.
+
+For system fonts, reference them directly in a `font-family` stack with appropriate OS-level fallbacks. When a design splits a single family into display/text variants, prefer a single font variable with the display family rather than two CSS variables — unless the user explicitly asks for the split.
+
+**For non-system fonts, automatically connect them without asking the user.** Do not stop or prompt — just add them.
+
+- If the fonts are already present in the implementation (referenced in CSS or loaded via a font provider), skip and proceed.
+- For each missing non-system font, add a `<link rel="preconnect">` + `<link rel="stylesheet">` for Google Fonts (or the appropriate CDN) to the implementation's HTML `<head>`.
+- For CSS-only projects, add `@import url(...)` at the top of the main stylesheet.
+- Playwright already waits for `document.fonts.ready`, so no extra delay is needed.
+
+If you cannot confidently classify a family as system vs non-system (obscure corporate font, custom foundry name, etc.), ask the user once rather than guessing — importing the wrong family or missing one both cause layout reflow.
+
+## Step 2c, extract implementation spec (spec-first)
+
+After fetching Figma data and before writing any HTML/CSS, run:
+
+```bash
+node scripts/extract-implementation-data.cjs <path-to-figma-node.json>
+```
+
+This produces `implementation-spec.json` in the same directory as `figma-node.json`.
+When using `run-pipeline.cjs`, this file is generated automatically — check `artifacts.implementationSpec` in the run result.
+
+The spec gives you in one file:
+- `viewport` — exact frame dimensions (width × height)
+- `sections[]` — full annotated node tree with `bounds` (relative to root 0,0), `fill`, `stroke` (including `individualStrokeWeights` + `dashPattern` when present), `cornerRadius`, `layout` (auto-layout mode/padding/gap), `effects`
+- `texts[]` — flat list of every text node with `characters`, `style`, and (when present) `styledRuns[]`
+- `fonts[]` — unique font families used
+- `colors[]` — all fill colors sorted by frequency, as `{ hex, count }`
+- `warnings[]` — nodes with `visible=false`, invisible fills, and TEXT nodes with inline style overrides
+
+**Use `implementation-spec.json` as the primary reference when building or fixing layout.** Avoid repeated ad-hoc queries against the raw `figma-node.json` — the spec captures everything needed in a single structured pass.
+
+**Read `warnings[]` immediately — before writing a single line of HTML or CSS.** Every entry is either a hidden node, an invisible fill, or a TEXT node that contains inline style overrides. Do not skip this check.
+
+**Check `styledRuns[]` on every TEXT entry before writing markup.** When a `texts[]` entry has `styledRuns`, the text contains mixed styling — bold spans, colour changes, or font-weight overrides. Render each run using the appropriate inline element (`<strong>`, `<em>`, or `<span>`) with styles derived from `styledRuns[].style`. Ignoring `styledRuns` produces flat-weight text that causes layout reflow and pixel mismatches. Each run: `{ start, end, characters, style }` where `style` is already the merged result of the base style and the Figma override.
+
+**Before writing or editing ANY text-bearing CSS, read `typography-map.json`.** `run-pipeline.cjs` generates it next to `implementation-spec.json` (path under `artifacts.typographyMap`). It is a deduped list of every unique text style in the design — each entry has `fontFamily`, `fontSize`, `fontWeight`, `fontStyle`, `lineHeightPx`, `letterSpacing`, `color`, `occurrences`, and `samples`. Use these values verbatim for every text rule. Do not eyeball typography from the reference image, do not default to "none" on `letter-spacing` or `1` on `line-height`. Every one of the six typography fields — family, size, weight, style, line-height, letter-spacing — must come from `typography-map.json`.
+
+**Before writing or editing ANY margin / padding / gap, read `spacing-map.json`.** `run-pipeline.cjs` generates it next to `implementation-spec.json` (path under `artifacts.spacingMap`). It is a flat list of every auto-layout container with its `mode`, `paddingTop/Right/Bottom/Left`, `itemSpacing`, and `bounds`, plus a `summary` of unique gap and padding values used in the design. Each entry has a `path` breadcrumb (e.g. `Section > Content > Texts`) so you can locate the exact Figma node for any container you render. Cite a concrete entry when picking a spacing value — if no auto-layout node matches the element you are styling, that is a blocker, not an invitation to guess.
+
+**Before writing or editing ANY border / outline / divider CSS, read `strokes-map.json`.** `run-pipeline.cjs` generates it next to `implementation-spec.json` (path under `artifacts.strokesMap`). It is a flat list of every node with a visible Figma stroke — each entry has `path` (breadcrumb), `bounds`, `color`, `weight`, `align`, `sides[]` (which of top/right/bottom/left are active), `perSideWeight`, `dashPattern`, and `cornerRadius/cornerRadii`, plus a `summary` of unique colors, weights, and side-distribution. **Partial strokes (single-side borders like a header's bottom divider or a footer's top divider) are the most commonly missed property** — Figma expresses them via `individualStrokeWeights`, and they render as thin horizontal or vertical lines that are easy to dismiss as diff artifacts. Every `border*` / `outline*` / horizontal or vertical divider in CSS must trace to an entry here. If a section header or footer appears in `strokes-map.json` with `sides: ["bottom"]` or `sides: ["top"]`, that is a required `border-bottom` / `border-top` — do not treat it as optional decoration. For light backgrounds Figma usually uses a dark stroke color and vice versa; always read `color` from the entry rather than guessing from the section background.
+
+To generate these manually (if running scripts individually instead of via the pipeline):
+
+```bash
+node scripts/extract-typography.cjs <path-to-implementation-spec.json>
+node scripts/extract-spacing-map.cjs <path-to-implementation-spec.json>
+node scripts/extract-strokes-map.cjs <path-to-implementation-spec.json>
+```
+
+Read `references/scripts.md` for the exact argument format and output contract.
+
 ## Step 3, build initial implementation (if starting from scratch)
 
 Skip this step if an implementation already exists — go directly to Step 4.
 
 If no implementation exists yet:
-- Read Figma frame bounds, layout structure, colors, typography, spacing, and component hierarchy from the API data.
+- Read `implementation-spec.json` (from Step 2c) for frame bounds, layout structure, colors, typography, spacing, and component hierarchy.
 - Detect the project type from context: check for `package.json`, framework config files (`next.config.*`, `vite.config.*`, `nuxt.config.*`, etc.), or ask the user if unclear.
 - Create the implementation using the conventions of the detected stack — follow its standard file and component conventions, and match the styling approach already used in the project.
 - Use Figma-derived values for all properties — do not invent defaults.
@@ -158,10 +221,28 @@ Always try to produce these artifacts:
 - mismatch percentage
 - machine-readable report
 
+`run-pipeline.cjs` runs a tile comparison automatically (300px horizontal bands) and writes `pixelmatch/tile-report.json`. Read `tileCompare.topMismatchTiles` from the run result to identify the highest-mismatch vertical zones first. Each tile entry includes `sectionName` and `sectionRelativeY` — use these to know which section to inspect without manually dividing by section height.
+
+**Visually inspect top mismatch tiles before looking at the full-page diff.** For each top tile, crop the reference, screenshot, and diff images at the exact tile y-coordinates and read them with the Read tool. Use `scripts/crop-tile.cjs` for precise cropping (platform crop tools like `sips` use unreliable coordinate systems):
+
+```bash
+node scripts/crop-tile.cjs <src.png> <dst.png> <y> <height>
+```
+
+Tile-level inspection identifies the actual cause of each mismatch zone — missing borders, wrong icon direction, layout shift from text height differences — rather than guessing from the full-page view.
+
+After inspecting the top tiles, **read all three full-page images** (reference, screenshot, diff) using the Read tool for a structural overview. Full-page inspection catches issues that span multiple tiles: wrong section count, missing sections, wrong page height, or broad color/background mismatches.
+
+OpenCV runs **per tile** on the top 3 highest-mismatch bands (not on the full image), so it works correctly for full-page designs of any height without WASM memory issues. Each reported region includes `tileY` (the tile's absolute Y offset) and `y` (absolute Y coordinate in the full image).
+
+After each run, `run-result.json` is written to the run directory as soon as pixelmatch and tile comparison finish — before OpenCV. Read it first: it contains `mismatch` (diffPercent), `delta` (change vs previous run), `tileCompare.topMismatchTiles`, and `artifacts` paths. If the pipeline crashes after tile comparison, `run-result.json` still exists with the essential data.
+
 ## Step 6, make visible layout fixes
 
 This step is performed by the agent, not by the scripts.
 The agent uses Figma API data, reference images, and diff reports from previous steps to decide what to change, then edits the implementation files (HTML, CSS, assets) directly.
+
+Before making fixes, read `tileCompare.topMismatchTiles` from `run-result.json` to identify the highest-mismatch vertical zones. Each tile includes `y` (absolute pixel offset), `sectionName`, and `sectionRelativeY`. Fix the highest-mismatch sections first, then move to lower-mismatch areas.
 
 Prioritize the biggest contributors first:
 - wrong section backgrounds
@@ -175,6 +256,7 @@ Prioritize the biggest contributors first:
 - mismatched colors, corner radius, typography, or imagery
 
 Prefer visible, direct fixes over refactors.
+Do not implement nodes where `visible === false` in the Figma API — these are hidden layers and must be skipped entirely. Check `visible` on every node before using its content, fills, or dimensions.
 Do not invent new content if the design already defines it.
 Do not replace real preview visuals with invented placeholders when Figma already provides the real screenshot or crop source.
 Use Figma API data and screenshots to ground spacing, sizing, structure, embedded preview imagery, color decisions, corner radius, borders, effects, and typography.
@@ -182,38 +264,50 @@ Do not invent page, section, card, or preview colors when the Figma file already
 Matching colors directly from Figma can materially reduce mismatch and should be preferred over manual palette guessing.
 Read and apply `cornerRadius` or `rectangleCornerRadii` from Figma for cards, buttons, inputs, images, and preview panels instead of defaulting to generic border radius values.
 Match typography from Figma, including font family, font size, font weight, line height, letter spacing, and text alignment.
-Match borders and visible effects from Figma, including stroke width, stroke color, shadow, blur, and opacity when they materially affect the rendered result.
+Match borders and visible effects from Figma, including stroke width, stroke color, shadow, blur, and opacity when they materially affect the rendered result. Consult `strokes-map.json` for every border decision — including partial/single-side strokes (header bottom dividers, footer top dividers, card outlines). A thin horizontal line visible in the diff is almost always a missing `border-bottom` / `border-top` from a node with `individualStrokeWeights` set on one side; do not dismiss such lines as antialiasing or rendering artifacts.
 Use the correct Figma-derived assets for images, thumbnails, screenshots, and fills. If an asset cannot be extracted from Figma, report the blocker clearly instead of silently substituting an incorrect image.
 Prefer exact layout dimensions from Figma bounds over approximate CSS values. Avoid "close enough" sizing when the design provides exact measurements.
 
 ## Step 7, re-run and summarize
 
-After each pass, summarize:
-- current mismatch percentage
-- paths to artifacts
-- biggest remaining mismatches
+After each pass, read `run-result.json` first — it is the single compact source of truth for a run:
+- `mismatch` — diffPercent for this run
+- `delta` — change vs the previous run (negative = improvement)
+- `previousRun` — `{ runId, diffPercent }` of the run before this one
+- `tileCompare.topMismatchTiles` — ranked zones to fix next, each with `sectionName` and `sectionRelativeY`
+- `artifacts.*` — paths to all generated files
+
+Summarize:
+- current mismatch percentage and delta vs previous run
+- top remaining mismatch tiles
+- biggest visible changes made
 - blockers, if any
 
-When checking prior results, prefer the compact JSON outputs over rereading large markdown or raw tool logs.
+When checking prior results, prefer `run-result.json` over rereading large markdown or raw tool logs.
 
-Use `scripts/generate-layout-report.cjs` at the end of the pipeline to produce both:
-- `report.json`
-- `summary.md`
+`final/report.json` and `final/summary.md` are generated by `run-pipeline.cjs` automatically. If they are missing (pipeline crashed before reaching that step), run:
+
+```bash
+node scripts/generate-layout-report.cjs \
+  --output <run-dir>/final \
+  --figma <figma-url> \
+  --page <page-url> \
+  --viewport <WxH> \
+  --reference <run-dir>/figma/reference-image.png \
+  --screenshot <run-dir>/capture/captured-page.png \
+  --diff <run-dir>/pixelmatch/diff.png \
+  --pixelmatch-report <run-dir>/pixelmatch/report.json
+```
 
 If tooling failed but useful artifacts exist, say so plainly and continue with the best available diff method.
 If the page is unreachable, `FIGMA_TOKEN` is missing, or required artifacts cannot be produced, stop and report the blocking reason clearly.
 At the end of the task, ask the user whether they want to clean up working files under `figma-pixel-runs/<project-slug>/` before deleting anything.
 
-## Step 8, ask about the next iteration
+## Step 8, stop after one run
 
-After summarizing results, always ask the user whether to run another iteration.
+After summarizing results, stop. Do not ask whether to run another iteration and do not start one automatically.
 
-Show the current mismatch percentage and the top remaining mismatches, then ask:
-- whether to continue with another round of fixes
-- which specific issues to prioritize in the next pass, or whether to let the agent decide based on the diff
-
-Do not start the next iteration without explicit user confirmation.
-If the user confirms, return to Step 6 and repeat from there.
+If the user explicitly requests another pass (e.g. "run again", "fix more", "next iteration"), return to Step 6 and repeat from there. Otherwise the task is done.
 
 ## Output contract
 
@@ -233,8 +327,8 @@ Before considering the task done, verify this fidelity checklist:
 - colors match Figma API values
 - corner radius matches Figma
 - dimensions match Figma bounds
-- spacing, padding, and gaps match Figma
-- typography matches Figma
+- spacing, padding, and gaps match Figma — every margin / padding / gap value must trace to a specific container entry in `spacing-map.json`; do not mark done if any value is eyeballed or picked as a round default
+- typography matches Figma — verify every one of the six fields (`fontFamily`, `fontSize`, `fontWeight`, `fontStyle`, `lineHeightPx`, `letterSpacing`) against `typography-map.json` for each text style used; do not mark done if any field is eyeballed or defaulted
 - correct Figma-derived images or exports are used
 - no invented placeholders remain where Figma provides real assets
 
@@ -249,3 +343,4 @@ Before considering the task done, verify this fidelity checklist:
 - Read `references/figma.md` for the Figma input layer.
 - Read `references/workflow.md` for a concise execution checklist.
 - Read `references/artifacts.md` for the run directory contract and expected artifact outputs.
+- Read `references/scripts.md` for the exact CLI usage of every script, including `extract-implementation-data.cjs`.
