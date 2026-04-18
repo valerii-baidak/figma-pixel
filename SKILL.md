@@ -117,12 +117,18 @@ Read `references/artifacts.md` for the expected artifact set.
 After fetching Figma data, extract the list of unique font families used in the design.
 Read `fontFamily` values from `figma/design-tokens.json` (typography array) if available, or from `figma-node.json` directly.
 
-**Automatically connect all fonts without asking the user.** Do not stop or prompt — just add them.
+**First classify each font as system or non-system — do not import system fonts.** System fonts ship with the OS; adding `<link>` / `@import` for them does nothing on the target platform but may trigger unnecessary network requests and makes the CSS misleading. Only non-system fonts need to be connected.
+
+For system fonts, reference them directly in a `font-family` stack with appropriate OS-level fallbacks. When a design splits a single family into display/text variants, prefer a single font variable with the display family rather than two CSS variables — unless the user explicitly asks for the split.
+
+**For non-system fonts, automatically connect them without asking the user.** Do not stop or prompt — just add them.
 
 - If the fonts are already present in the implementation (referenced in CSS or loaded via a font provider), skip and proceed.
-- For each missing font, add a `<link rel="preconnect">` + `<link rel="stylesheet">` for Google Fonts (or the appropriate CDN) to the implementation's HTML `<head>`.
+- For each missing non-system font, add a `<link rel="preconnect">` + `<link rel="stylesheet">` for Google Fonts (or the appropriate CDN) to the implementation's HTML `<head>`.
 - For CSS-only projects, add `@import url(...)` at the top of the main stylesheet.
 - Playwright already waits for `document.fonts.ready`, so no extra delay is needed.
+
+If you cannot confidently classify a family as system vs non-system (obscure corporate font, custom foundry name, etc.), ask the user once rather than guessing — importing the wrong family or missing one both cause layout reflow.
 
 ## Step 2c, extract implementation spec (spec-first)
 
