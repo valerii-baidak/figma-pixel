@@ -1,6 +1,6 @@
 ---
 name: figma-pixel
-description: Compare a webpage or UI layout against a Figma design, then guide the agent to build or fix the implementation. Scripts handle capture, comparison, and reporting; the agent applies layout fixes based on Figma data and diff results. Use when the user provides a Figma URL and asks to build, recreate, match, compare, restyle, or tighten implementation to that design.
+description: Figma-to-frontend visual QA workflow for building pages from Figma designs and tightening existing implementations. Captures the target page, exports the selected Figma frame, runs pixel and layout comparisons, and produces local reports that guide spacing, typography, color, and structure fixes. Use when a user provides a Figma URL and asks to build, recreate, compare, match, restyle, or improve a web UI.
 allowed-tools: Read, Write, Edit, Bash, Glob, Grep
 metadata:
   openclaw:
