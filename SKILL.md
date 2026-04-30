@@ -1,7 +1,7 @@
 ---
 name: figma-pixel
 description: Compare a webpage or UI layout against a Figma design, then guide the agent to build or fix the implementation. Scripts handle capture, comparison, and reporting; the agent applies layout fixes based on Figma data and diff results. Use when the user provides a Figma URL and asks to build, recreate, match, compare, restyle, or tighten implementation to that design.
-tools: Read, Write, Edit, Bash, Glob, Grep
+allowed-tools: Read, Write, Edit, Bash, Glob, Grep
 metadata:
   openclaw:
     emoji: 📐

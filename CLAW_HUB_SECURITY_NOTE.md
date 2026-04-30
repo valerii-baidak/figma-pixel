@@ -4,14 +4,13 @@ This skill uses `FIGMA_TOKEN` only to access the official Figma REST API for the
 
 ## Why these patterns appear
 
-Security scans may flag:
-- environment variable access combined with network send
+Security scans may flag credential and network patterns. The code separates token configuration from network modules and allowlists authenticated requests to `https://api.figma.com`.
 
-That behavior is expected here because the skill must:
-- read `FIGMA_TOKEN`
+The required network flow is:
+- read `FIGMA_TOKEN` in `lib/config.cjs`
 - call `https://api.figma.com/v1/files/...`
 - call `https://api.figma.com/v1/images/...`
-- download the Figma-generated reference image for visual comparison
+- download the Figma-generated reference image for visual comparison without sending the token to that image URL
 
 ## What the skill does not do
 
@@ -24,7 +23,7 @@ That behavior is expected here because the skill must:
 ## Data flow
 
 The skill only sends:
-- the Figma API token in the `X-Figma-Token` header
+- the Figma API token in the `X-Figma-Token` header to `https://api.figma.com`
 - the requested Figma file key and node id in official Figma API requests
 
 The skill stores local artifacts only for the requested comparison workflow:
@@ -36,4 +35,4 @@ The skill stores local artifacts only for the requested comparison workflow:
 ## Security posture
 
 This is a Figma-dependent design comparison skill.
-Network calls to the official Figma API are required for core functionality and are limited to the requested design file and export endpoints.
+Network calls to the official Figma API are required for core functionality and are limited in code to the requested design file and export endpoints on `api.figma.com`.
