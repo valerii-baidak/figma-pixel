@@ -1,7 +1,7 @@
 ---
 name: figma-pixel
-description: Compare a webpage or UI layout against a Figma design, then guide the agent to build or fix the implementation. Scripts handle capture, comparison, and reporting; the agent applies layout fixes based on Figma data and diff results. Use when the user provides a Figma URL and asks to build, recreate, match, compare, restyle, or tighten implementation to that design.
-tools: Read, Write, Edit, Bash, Glob, Grep
+description: Figma-to-frontend visual QA workflow for building pages from Figma designs and tightening existing implementations. Captures the target page, exports the selected Figma frame, runs pixel and layout comparisons, and produces local reports that guide spacing, typography, color, and structure fixes. Use when a user provides a Figma URL and asks to build, recreate, compare, match, restyle, or improve a web UI.
+allowed-tools: Read, Write, Edit, Bash, Glob, Grep
 metadata:
   openclaw:
     emoji: 📐
@@ -102,10 +102,12 @@ Read `references/figma.md` for the expected Figma input layer.
 - Derive viewport width and height from the Figma frame/node bounds, not from hardcoded values.
 - Derive block, card, panel, image, and section width and height from Figma bounds instead of eyeballing proportions.
 - Match section spacing from Figma, including padding, gap, inter-section spacing, and internal content spacing.
-- Treat the exported Figma reference PNG as the exact visual target for comparison. Without the reference image, visual matching is unreliable.
-- Use real Figma-derived screenshots, exports, or crops for visual content. Do not invent placeholder preview images, surrogate mock panels, or decorative stand-ins when the Figma design already shows the real visuals.
-- When the design includes embedded preview panels, screenshots, or UI previews, prefer inserting those real Figma-derived images instead of recreating approximate placeholders.
-- **If a FRAME or GROUP node contains a complex UI mockup** (panel, component showcase, screenshot, tool window, or any multi-element composition that would require significant HTML/CSS to recreate), **always export it as PNG via the Figma images API and reference it with `<img>`**. Do not attempt to hand-code such nodes. The Figma images API endpoint is `GET /v1/images/{fileKey}?ids={nodeId}&format=png&scale=2`. Save exported PNGs to the implementation project's public/static directory and reference them directly. This is the single most impactful action for pixel accuracy — hand-coded approximations of UI mockups will always diverge from the Figma reference.
+- Treat the exported Figma reference PNG as the exact visual target for comparison only. Without the reference image, visual matching is unreliable.
+- **Never use the whole Figma frame/page export as the implementation itself.** Do not place the full reference PNG/SVG/PDF/canvas export into the page as a hero image, background image, visual layer, screenshot layer, or hidden overlay. A valid implementation must be real HTML/CSS structure for the page sections, text, layout, backgrounds, dividers, spacing, and typography.
+- Before finalizing a build-from-Figma task, scan implementation files and fail the work if they reference full-frame exports such as `reference-image.png`, `figma-reference.png`, `full-page.png`, `screenshot.png`, or any exported image whose dimensions match the root Figma frame. Remove those references and implement the layout with markup/CSS instead.
+- Use real Figma-derived screenshots, exports, or crops only for localized visual content inside the design. Do not invent placeholder preview images, surrogate mock panels, or decorative stand-ins when the Figma design already shows the real visuals.
+- When the design includes embedded preview panels, screenshots, or UI previews, prefer inserting those localized child-node images instead of recreating approximate placeholders.
+- **If a child FRAME or GROUP node contains a complex UI mockup** (panel, component showcase, screenshot, tool window, or any multi-element composition that would require significant HTML/CSS to recreate), **export only that child node as PNG via the Figma images API and reference it with `<img>`**. Do not export the root/page frame for this purpose. The Figma images API endpoint is `GET /v1/images/{fileKey}?ids={nodeId}&format=png&scale=2`. Save exported child-node PNGs to the implementation project's public/static directory and reference them directly. This is the single most impactful action for pixel accuracy — hand-coded approximations of UI mockups will always diverge from the Figma reference.
 - If the Figma node uses image fills or exportable assets, extract and use those assets instead of substituting similar images.
 - Keep the viewport/frame size explicit.
 - Preserve enough metadata to trace the comparison later: URL, node id, size, label.

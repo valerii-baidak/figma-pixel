@@ -66,10 +66,16 @@ Claude Code will auto-discover the skill and make it available as `/figma-pixel`
 
 Install via the OpenClaw hub or copy this directory into your OpenClaw skills folder.
 
-## Security notes
-- The skill does not install dependencies from inside the package.
+## Security
+
+`figma-pixel` requires `FIGMA_TOKEN` only to call the official Figma API.
+
+- The token is used only in the `X-Figma-Token` header for requests to `https://api.figma.com`.
+- Figma API requests are allowlisted to the `api.figma.com` hostname in code.
+- The skill does not send the token to third-party services.
+- The skill does not upload project files or screenshots anywhere.
+- All comparison artifacts are written locally.
 - Runtime scripts fail with explicit prerequisite errors when dependencies are missing.
-- Figma responses are stored locally as run artifacts for comparison and debugging.
 - Exported image URLs returned by Figma are not persisted to stdout artifacts.
 
 Repository:
